@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Portal publico de pacientes de Odontologia Integral.">
+  <title>Portal de Pacientes | Odontologia Integral</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <!-- Pantalla inicial para que el paciente entre al portal. -->
+    <section class="login-view" id="login-view" aria-labelledby="login-title">
+      <div class="brand-block">
+        <span class="brand-mark" aria-hidden="true">OI</span>
+        <div>
+          <strong>Odontologia Integral</strong>
+          <span>Portal de Pacientes</span>
+        </div>
+      </div>
+
+      <form class="auth-card" id="login-form" novalidate>
+        <div class="auth-card__header">
+          <p class="eyebrow">Acceso privado</p>
+          <h1 id="login-title">Iniciar sesion</h1>
+          <p>Consulta tus citas, expediente y seguimiento clinico desde un solo lugar.</p>
+        </div>
+
+        <div class="form-row">
+          <label for="email">Correo electronico</label>
+          <input id="email" name="email" type="email" autocomplete="email" placeholder="correo@ejemplo.com" required>
+          <small class="field-error" data-error-for="email"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="password">Contrasena</label>
+          <div class="password-field">
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Tu contrasena" required>
+            <button type="button" id="toggle-password" aria-label="Mostrar contrasena">Ver</button>
+          </div>
+          <small class="field-error" data-error-for="password"></small>
+        </div>
+
+        <div class="auth-options">
+          <label class="remember-check">
+            <input name="remember" type="checkbox">
+            <span>Recordarme</span>
+          </label>
+          <a href="#recuperar">Recuperar acceso</a>
+        </div>
+
+        <button class="button button--primary" type="submit">Entrar al portal</button>
+        <p class="form-status" id="login-status" role="status" aria-live="polite"></p>
+      </form>
+
+      <p class="support-note">
+        Si aun no tienes cuenta, solicita tu activacion directamente en recepcion.
+      </p>
+    </section>
+
+    <!-- Dashboard interno del paciente. Se muestra despues del login. -->
+    <section class="portal-view is-hidden" id="portal-view" aria-labelledby="portal-title">
+      <header class="portal-header">
+        <div class="brand-block brand-block--compact">
+          <span class="brand-mark" aria-hidden="true">OI</span>
+          <div>
+            <strong>Odontologia Integral</strong>
+            <span>Portal de Pacientes</span>
+          </div>
+        </div>
+        <button class="button button--secondary" id="logout-button" type="button">Salir</button>
+      </header>
+
+      <div class="welcome-panel">
+        <div>
+          <p class="eyebrow">Bienvenida</p>
+          <h1 id="portal-title">Hola, Mariana</h1>
+          <p>Este es el resumen de tus proximas citas y expediente dental.</p>
+        </div>
+        <a class="button button--primary" href="agendar.html">Nueva cita</a>
+      </div>
+
+      <!-- Resumen principal del paciente: cita, expediente y acciones. -->
+      <div class="dashboard-grid">
+        <article class="panel next-appointment">
+          <div class="panel__header">
+            <h2>Proxima cita</h2>
+            <span class="status-pill">Confirmada</span>
+          </div>
+          <div class="appointment-date">
+            <span>24</span>
+            <div>
+              <strong>Junio 2026</strong>
+              <small>10:30 AM</small>
+            </div>
+          </div>
+          <dl class="detail-list">
+            <div>
+              <dt>Motivo</dt>
+              <dd>Limpieza dental</dd>
+            </div>
+            <div>
+              <dt>Doctor</dt>
+              <dd>Dra. Ana Torres</dd>
+            </div>
+            <div>
+              <dt>Consultorio</dt>
+              <dd>Sucursal Centro</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <div class="panel__header">
+            <h2>Expediente</h2>
+            <span class="muted-label">Actualizado</span>
+          </div>
+          <div class="record-summary">
+            <div>
+              <span>Grupo sanguineo</span>
+              <strong>O+</strong>
+            </div>
+            <div>
+              <span>Alergias</span>
+              <strong>Ninguna registrada</strong>
+            </div>
+            <div>
+              <span>Ultima visita</span>
+              <strong>12 May 2026</strong>
+            </div>
+          </div>
+        </article>
+
+        <!-- RF4: lista de proximas citas con acciones de reprogramar o cancelar. -->
+        <article class="panel panel--wide">
+          <div class="panel__header">
+            <h2>Mis citas</h2>
+            <span class="muted-label">Proximas</span>
+          </div>
+          <div class="appointment-cards" id="appointment-list">
+            <article class="appointment-card" data-appointment-id="apt-001">
+              <div class="appointment-card__date">
+                <span>24</span>
+                <div>
+                  <strong>Junio 2026</strong>
+                  <small>10:30 AM</small>
+                </div>
+              </div>
+              <div class="appointment-card__body">
+                <div>
+                  <h3>Limpieza dental</h3>
+                  <span class="status-pill">Confirmada</span>
+                </div>
+                <p>Dra. Ana Torres &middot; Sucursal Centro</p>
+              </div>
+              <div class="appointment-card__actions">
+                <a class="button button--secondary" href="agendar.html">Reprogramar</a>
+                <button class="button button--danger" type="button" data-cancel-appointment>Cancelar Cita</button>
+              </div>
+            </article>
+
+            <article class="appointment-card" data-appointment-id="apt-002">
+              <div class="appointment-card__date">
+                <span>02</span>
+                <div>
+                  <strong>Julio 2026</strong>
+                  <small>04:00 PM</small>
+                </div>
+              </div>
+              <div class="appointment-card__body">
+                <div>
+                  <h3>Revision general</h3>
+                  <span class="status-pill">Confirmada</span>
+                </div>
+                <p>Dr. Luis Ramirez &middot; Sucursal Norte</p>
+              </div>
+              <div class="appointment-card__actions">
+                <a class="button button--secondary" href="agendar.html">Reprogramar</a>
+                <button class="button button--danger" type="button" data-cancel-appointment>Cancelar Cita</button>
+              </div>
+            </article>
+          </div>
+          <p class="empty-state is-hidden" id="appointments-empty">No tienes citas proximas registradas.</p>
+        </article>
+
+        <!-- Solicitud rapida de cita desde el dashboard. -->
+        <article class="panel panel--wide" id="nueva-cita">
+          <div class="panel__header">
+            <h2>Solicitar nueva cita</h2>
+            <span class="muted-label">Solicitud</span>
+          </div>
+          <form class="request-form" id="appointment-request-form" novalidate>
+            <div class="form-grid">
+              <div class="form-row">
+                <label for="service">Servicio</label>
+                <select id="service" name="service" required>
+                  <option value="">Selecciona</option>
+                  <option>Consulta general</option>
+                  <option>Limpieza dental</option>
+                  <option>Dolor o urgencia</option>
+                  <option>Tratamiento restaurativo</option>
+                </select>
+                <small class="field-error" data-error-for="service"></small>
+              </div>
+              <div class="form-row">
+                <label for="date">Fecha preferida</label>
+                <input id="date" name="date" type="date" required>
+                <small class="field-error" data-error-for="date"></small>
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="notes">Comentarios</label>
+              <textarea id="notes" name="notes" rows="3" placeholder="Describe brevemente el motivo"></textarea>
+            </div>
+            <button class="button button--primary" type="submit">Enviar solicitud</button>
+            <p class="form-status" id="request-status" role="status" aria-live="polite"></p>
+          </form>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal nativo para confirmar cancelaciones. -->
+  <div class="confirm-dialog is-hidden" id="cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title">
+    <div class="confirm-dialog__backdrop" data-close-dialog></div>
+    <section class="confirm-dialog__card">
+      <div class="confirm-dialog__icon" aria-hidden="true">!</div>
+      <h2 id="cancel-dialog-title">Cancelar cita</h2>
+      <p>
+        Recuerda que las cancelaciones o reprogramaciones deben realizarse con al menos 24 horas de anticipacion.
+        Si confirmas, esta cita dejara de aparecer en tu lista.
+      </p>
+      <div class="confirm-dialog__actions">
+        <button class="button button--secondary" type="button" data-close-dialog>Conservar cita</button>
+        <button class="button button--danger" id="confirm-cancel-button" type="button">Si, cancelar</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

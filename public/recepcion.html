@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Panel administrativo para recepcion de Odontologia Integral.">
+  <title>Recepcion | Odontologia Integral</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="reception-shell">
+    <!-- Sidebar de navegacion del modulo administrativo. -->
+    <aside class="reception-sidebar" aria-label="Navegacion de recepcion">
+      <a class="brand-block brand-block--compact" href="recepcion.html" aria-label="Panel de recepcion">
+        <span class="brand-mark" aria-hidden="true">OI</span>
+        <div>
+          <strong>Odontologia Integral</strong>
+          <span>Recepcion</span>
+        </div>
+      </a>
+
+      <nav class="reception-nav">
+        <a class="is-active" href="#agenda">Agenda del dia</a>
+        <a href="#pacientes">Pacientes</a>
+        <a href="#pagos">Pagos</a>
+        <a href="#reportes">Reportes</a>
+      </nav>
+    </aside>
+
+    <!-- Contenido principal de trabajo para recepcion. -->
+    <section class="reception-main" id="agenda" aria-labelledby="reception-title">
+      <header class="reception-header">
+        <div>
+          <p class="eyebrow">Panel administrativo</p>
+          <h1 id="reception-title">Dashboard de Recepcion</h1>
+          <p>Agenda consolidada de citas para hoy.</p>
+        </div>
+        <button class="button button--primary reception-new-button" id="open-manual-appointment" type="button">
+          Nueva Cita Presencial
+        </button>
+      </header>
+
+      <div class="reception-stats" aria-label="Resumen del dia">
+        <article class="stat-card">
+          <span>Total citas</span>
+          <strong>8</strong>
+        </article>
+        <article class="stat-card">
+          <span>Confirmadas</span>
+          <strong>5</strong>
+        </article>
+        <article class="stat-card">
+          <span>En sala</span>
+          <strong>2</strong>
+        </article>
+      </div>
+
+      <!-- RF5/RF7: agenda del dia con cambio visual de estatus. -->
+      <section class="reception-panel" aria-label="Agenda consolidada">
+        <div class="panel__header">
+          <h2>Citas de hoy</h2>
+          <span class="muted-label">Martes 16 Jun 2026</span>
+        </div>
+
+        <div class="appointments-table" role="table" aria-label="Citas del dia">
+          <div class="appointments-table__head" role="row">
+            <span role="columnheader">Hora</span>
+            <span role="columnheader">Paciente</span>
+            <span role="columnheader">Tratamiento</span>
+            <span role="columnheader">Estatus</span>
+            <span role="columnheader">Acciones</span>
+          </div>
+
+          <article class="appointment-row status-confirmed" role="row" data-status="confirmed">
+            <span class="appointment-row__time" role="cell">09:00</span>
+            <span role="cell">Mariana Lopez</span>
+            <span role="cell">Limpieza dental</span>
+            <span role="cell"><span class="reception-badge" data-status-badge>Confirmada</span></span>
+            <div class="status-actions" role="cell">
+              <button type="button" data-status="confirmed">Confirmada</button>
+              <button type="button" data-status="attended">Asistio</button>
+              <button type="button" data-status="missed">No Asistio</button>
+              <button type="button" data-status="cancelled">Cancelada</button>
+            </div>
+          </article>
+
+          <article class="appointment-row status-confirmed" role="row" data-status="confirmed">
+            <span class="appointment-row__time" role="cell">10:30</span>
+            <span role="cell">Carlos Mendoza</span>
+            <span role="cell">Consulta general</span>
+            <span role="cell"><span class="reception-badge" data-status-badge>Confirmada</span></span>
+            <div class="status-actions" role="cell">
+              <button type="button" data-status="confirmed">Confirmada</button>
+              <button type="button" data-status="attended">Asistio</button>
+              <button type="button" data-status="missed">No Asistio</button>
+              <button type="button" data-status="cancelled">Cancelada</button>
+            </div>
+          </article>
+
+          <article class="appointment-row status-attended" role="row" data-status="attended">
+            <span class="appointment-row__time" role="cell">12:00</span>
+            <span role="cell">Sofia Herrera</span>
+            <span role="cell">Revision de ortodoncia</span>
+            <span role="cell"><span class="reception-badge" data-status-badge>Asistio</span></span>
+            <div class="status-actions" role="cell">
+              <button type="button" data-status="confirmed">Confirmada</button>
+              <button type="button" data-status="attended">Asistio</button>
+              <button type="button" data-status="missed">No Asistio</button>
+              <button type="button" data-status="cancelled">Cancelada</button>
+            </div>
+          </article>
+
+          <article class="appointment-row status-cancelled" role="row" data-status="cancelled">
+            <span class="appointment-row__time" role="cell">16:00</span>
+            <span role="cell">Roberto Diaz</span>
+            <span role="cell">Resina dental</span>
+            <span role="cell"><span class="reception-badge" data-status-badge>Cancelada</span></span>
+            <div class="status-actions" role="cell">
+              <button type="button" data-status="confirmed">Confirmada</button>
+              <button type="button" data-status="attended">Asistio</button>
+              <button type="button" data-status="missed">No Asistio</button>
+              <button type="button" data-status="cancelled">Cancelada</button>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- RF6: modal para registrar manualmente una cita presencial. -->
+  <div class="confirm-dialog is-hidden" id="manual-appointment-modal" role="dialog" aria-modal="true" aria-labelledby="manual-modal-title">
+    <div class="confirm-dialog__backdrop" data-close-manual-modal></div>
+    <section class="manual-modal">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Registro manual</p>
+          <h2 id="manual-modal-title">Nueva Cita Presencial</h2>
+        </div>
+        <button class="text-button" type="button" data-close-manual-modal>Cerrar</button>
+      </div>
+
+      <form id="manual-appointment-form" novalidate>
+        <div class="form-row">
+          <label for="manual-name">Nombre del paciente</label>
+          <input id="manual-name" name="name" type="text" placeholder="Ej. Ana Martinez" required>
+          <small class="field-error" data-error-for="manual-name"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="manual-phone">Telefono</label>
+          <input id="manual-phone" name="phone" type="tel" placeholder="10 digitos" required>
+          <small class="field-error" data-error-for="manual-phone"></small>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label for="manual-date">Fecha</label>
+            <input id="manual-date" name="date" type="date" required>
+            <small class="field-error" data-error-for="manual-date"></small>
+          </div>
+          <div class="form-row">
+            <label for="manual-time">Hora</label>
+            <input id="manual-time" name="time" type="time" required>
+            <small class="field-error" data-error-for="manual-time"></small>
+          </div>
+        </div>
+
+        <button class="button button--primary" type="submit">Guardar cita</button>
+        <p class="form-status" id="manual-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+
+  <script src="recepcion.js"></script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Agenda una nueva cita en el portal de pacientes de Odontologia Integral.">
+  <title>Agendar Nueva Cita | Odontologia Integral</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell schedule-shell">
+    <!-- Encabezado simple de la vista de agenda. -->
+    <header class="portal-header">
+      <a class="brand-block brand-block--compact" href="index.html" aria-label="Volver al portal de pacientes">
+        <span class="brand-mark" aria-hidden="true">OI</span>
+        <div>
+          <strong>Odontologia Integral</strong>
+          <span>Portal de Pacientes</span>
+        </div>
+      </a>
+      <a class="button button--secondary" href="index.html">Volver</a>
+    </header>
+
+    <!-- RF2: vista para consultar disponibilidad y seleccionar horario. -->
+    <section class="schedule-layout" aria-labelledby="schedule-title">
+      <div class="schedule-heading">
+        <p class="eyebrow">Disponibilidad</p>
+        <h1 id="schedule-title">Agendar Nueva Cita</h1>
+        <p>Selecciona un dia disponible para consultar los horarios de los odontologos.</p>
+      </div>
+
+      <!-- El calendario y los horarios se generan desde agendar.js. -->
+      <section class="calendar-panel" aria-label="Calendario de disponibilidad">
+        <div class="calendar-toolbar">
+          <div>
+            <span class="muted-label">Mes actual</span>
+            <h2 id="current-month">Calendario</h2>
+          </div>
+          <div class="calendar-legend" aria-label="Leyenda del calendario">
+            <span><i class="legend-dot legend-dot--available"></i>Disponible</span>
+            <span><i class="legend-dot legend-dot--busy"></i>Ocupado</span>
+          </div>
+        </div>
+
+        <div class="calendar-weekdays" aria-hidden="true">
+          <span>Lun</span>
+          <span>Mar</span>
+          <span>Mie</span>
+          <span>Jue</span>
+          <span>Vie</span>
+          <span>Sab</span>
+          <span>Dom</span>
+        </div>
+
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <div class="time-slots" id="time-slots" aria-live="polite"></div>
+      </section>
+
+      <!-- Resumen de la fecha y hora seleccionadas. -->
+      <aside class="panel schedule-summary" aria-label="Resumen de seleccion">
+        <div class="panel__header">
+          <h2>Resumen</h2>
+          <span class="status-pill status-pill--soft" id="summary-status">Pendiente</span>
+        </div>
+        <dl class="detail-list">
+          <div>
+            <dt>Dia</dt>
+            <dd id="summary-date">Sin seleccionar</dd>
+          </div>
+          <div>
+            <dt>Horario</dt>
+            <dd id="summary-time">Sin seleccionar</dd>
+          </div>
+          <div>
+            <dt>Odontologo</dt>
+            <dd>Disponible por agenda</dd>
+          </div>
+        </dl>
+        <p class="form-status" id="schedule-status" role="status" aria-live="polite"></p>
+      </aside>
+    </section>
+  </main>
+
+  <!-- RF3: boton flotante que se habilita al seleccionar un horario disponible. -->
+  <button class="floating-confirm" id="confirm-slot" type="button" disabled>
+    Confirmar Cita
+  </button>
+
+  <!-- Toast de confirmacion de cita. -->
+  <div class="toast" id="confirmation-toast" role="status" aria-live="polite" aria-atomic="true">
+    <span class="toast__icon" aria-hidden="true">&#10003;</span>
+    <div>
+      <strong>Cita confirmada</strong>
+      <p id="toast-message">Cita confirmada.</p>
+    </div>
+  </div>
+
+  <script src="agendar.js"></script>
+</body>
+</html>
