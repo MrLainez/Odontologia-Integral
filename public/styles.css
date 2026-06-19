@@ -1247,6 +1247,33 @@ textarea:focus {
   width: 100%;
 }
 
+.users-list {
+  display: grid;
+  gap: 10px;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+
+.user-row strong,
+.user-row span {
+  display: block;
+}
+
+.user-row > div span {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
 @media (min-width: 760px) {
   .reception-stats {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1298,5 +1325,342 @@ textarea:focus {
 
   .reception-main {
     padding: 28px;
+  }
+}
+
+/* Modulo odontologico: expediente clinico y odontograma. */
+.dentist-shell {
+  width: min(100%, 1240px);
+  min-height: 100vh;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+  margin: 0 auto;
+  padding: 18px;
+}
+
+.dentist-topbar,
+.patient-summary,
+.clinical-panel {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-white);
+  box-shadow: var(--shadow-soft);
+}
+
+.dentist-topbar {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.patient-search label {
+  display: block;
+}
+
+.patient-summary {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.patient-summary h1 {
+  margin-bottom: 0;
+}
+
+.clinical-data {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.clinical-data div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.clinical-data dt {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.clinical-data dd {
+  margin: 0;
+  font-weight: 800;
+  text-align: right;
+}
+
+.dentist-workspace {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.clinical-panel {
+  padding: 18px;
+}
+
+.odontogram-panel {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.tooth-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.tooth-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tooth-state-dot {
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.tooth-state-healthy {
+  background: var(--color-white);
+  border: 1px solid var(--color-border);
+}
+
+.tooth-state-caries {
+  background: #f9b4ab;
+}
+
+.tooth-state-filling {
+  background: #9bd5f5;
+}
+
+.tooth-state-extraction {
+  background: #b8c2cc;
+}
+
+.odontogram-grid {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.quadrant-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.quadrant-group h3 {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.teeth-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: clamp(4px, 0.7vw, 8px);
+  min-width: 0;
+}
+
+.tooth {
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: clamp(36px, 5vw, 52px);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 1px;
+  padding: 2px;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  font-size: clamp(0.62rem, 1.8vw, 0.78rem);
+  font-weight: 800;
+}
+
+.tooth-surface {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  color: inherit;
+  border: 1px solid var(--color-border);
+  background: var(--color-white);
+  font-size: clamp(0.55rem, 1.4vw, 0.7rem);
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.tooth-surface:hover,
+.tooth-surface:focus-visible {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.surface--top {
+  grid-column: 2;
+  grid-row: 1;
+  border-radius: 50% 50% 25% 25%;
+}
+
+.surface--right {
+  grid-column: 3;
+  grid-row: 2;
+  border-radius: 25% 50% 50% 25%;
+}
+
+.surface--center {
+  grid-column: 2;
+  grid-row: 2;
+  border-radius: 50%;
+}
+
+.surface--left {
+  grid-column: 1;
+  grid-row: 2;
+  border-radius: 50% 25% 25% 50%;
+}
+
+.surface--bottom {
+  grid-column: 2;
+  grid-row: 3;
+  border-radius: 25% 25% 50% 50%;
+}
+
+.tooth--healthy {
+  background: var(--color-white);
+}
+
+.tooth--caries {
+  border-color: #d92d20;
+  background: #fff1f0;
+  color: #8f1d14;
+}
+
+.tooth--filling {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
+.tooth--extraction {
+  border-color: #98a2b3;
+  background: #eef2f6;
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.tooth-menu {
+  position: absolute;
+  z-index: 70;
+  width: 180px;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: 0 18px 45px rgba(23, 38, 51, 0.18);
+}
+
+.tooth-menu strong {
+  padding: 4px 6px;
+  font-size: 0.88rem;
+}
+
+.tooth-menu button {
+  min-height: 34px;
+  padding: 7px 8px;
+  color: var(--color-text);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tooth-menu button:hover,
+.tooth-menu button:focus-visible {
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+  outline: none;
+}
+
+.history-panel .button--primary {
+  width: 100%;
+}
+
+.history-panel {
+  min-width: 0;
+}
+
+.note-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.note-item {
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.note-item time {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-primary-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.note-item p {
+  margin: 0;
+  color: var(--color-text);
+}
+
+@media (min-width: 760px) {
+  .dentist-topbar,
+  .patient-summary {
+    grid-template-columns: 1fr minmax(320px, 0.8fr);
+    align-items: center;
+  }
+
+  .clinical-data {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .clinical-data div {
+    display: grid;
+    border-top: 0;
+    border-left: 1px solid var(--color-border);
+    padding: 0 0 0 16px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .dentist-workspace {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    align-items: start;
+  }
+
+  .odontogram-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

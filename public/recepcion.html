@@ -22,6 +22,7 @@
       <nav class="reception-nav">
         <a class="is-active" href="#agenda">Agenda del dia</a>
         <a href="#pacientes">Pacientes</a>
+        <a href="#usuarios">Usuarios</a>
         <a href="#pagos">Pagos</a>
         <a href="#reportes">Reportes</a>
       </nav>
@@ -124,6 +125,29 @@
           </article>
         </div>
       </section>
+
+      <!-- Gestion interna para crear accesos de pacientes desde recepcion. -->
+      <section class="reception-panel" id="usuarios" aria-labelledby="users-title">
+        <div class="panel__header">
+          <div>
+            <h2 id="users-title">Usuarios de pacientes</h2>
+            <span class="muted-label">Acceso creado por recepcion</span>
+          </div>
+          <button class="button button--secondary" id="open-user-modal" type="button">
+            Crear Usuario
+          </button>
+        </div>
+
+        <div class="users-list" id="users-list" aria-live="polite">
+          <article class="user-row">
+            <div>
+              <strong>Paciente Prueba</strong>
+              <span>prueba4@correo.com</span>
+            </div>
+            <span class="status-pill">Activo</span>
+          </article>
+        </div>
+      </section>
     </section>
   </main>
 
@@ -141,6 +165,12 @@
 
       <form id="manual-appointment-form" novalidate>
         <div class="form-row">
+          <label for="inputPacienteId">ID del paciente</label>
+          <input id="inputPacienteId" name="patientId" type="number" min="1" placeholder="Ej. 1" required>
+          <small class="field-error" data-error-for="inputPacienteId"></small>
+        </div>
+
+        <div class="form-row">
           <label for="manual-name">Nombre del paciente</label>
           <input id="manual-name" name="name" type="text" placeholder="Ej. Ana Martinez" required>
           <small class="field-error" data-error-for="manual-name"></small>
@@ -152,21 +182,63 @@
           <small class="field-error" data-error-for="manual-phone"></small>
         </div>
 
-        <div class="form-grid">
-          <div class="form-row">
-            <label for="manual-date">Fecha</label>
-            <input id="manual-date" name="date" type="date" required>
-            <small class="field-error" data-error-for="manual-date"></small>
-          </div>
-          <div class="form-row">
-            <label for="manual-time">Hora</label>
-            <input id="manual-time" name="time" type="time" required>
-            <small class="field-error" data-error-for="manual-time"></small>
-          </div>
+        <div class="form-row">
+          <label for="inputFechaHora">Fecha y hora</label>
+          <input id="inputFechaHora" name="dateTime" type="datetime-local" required>
+          <small class="field-error" data-error-for="inputFechaHora"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="inputMotivo">Motivo</label>
+          <input id="inputMotivo" name="reason" type="text" placeholder="Ej. Consulta presencial" required>
+          <small class="field-error" data-error-for="inputMotivo"></small>
         </div>
 
         <button class="button button--primary" type="submit">Guardar cita</button>
         <p class="form-status" id="manual-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+
+  <!-- Modal administrativo para crear usuarios de pacientes. -->
+  <div class="confirm-dialog is-hidden" id="user-modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
+    <div class="confirm-dialog__backdrop" data-close-user-modal></div>
+    <section class="manual-modal">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Recepcion</p>
+          <h2 id="user-modal-title">Crear Usuario de Paciente</h2>
+        </div>
+        <button class="text-button" type="button" data-close-user-modal>Cerrar</button>
+      </div>
+
+      <form id="user-form" novalidate>
+        <div class="form-row">
+          <label for="user-name">Nombre completo</label>
+          <input id="user-name" name="nombre" type="text" placeholder="Ej. Laura Hernandez" required>
+          <small class="field-error" data-error-for="user-name"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="user-phone">Telefono</label>
+          <input id="user-phone" name="telefono" type="tel" placeholder="10 digitos" required>
+          <small class="field-error" data-error-for="user-phone"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="user-email">Correo electronico</label>
+          <input id="user-email" name="email" type="email" placeholder="paciente@correo.com" required>
+          <small class="field-error" data-error-for="user-email"></small>
+        </div>
+
+        <div class="form-row">
+          <label for="user-password">Contrasena temporal</label>
+          <input id="user-password" name="password" type="password" placeholder="Minimo 6 caracteres" required>
+          <small class="field-error" data-error-for="user-password"></small>
+        </div>
+
+        <button class="button button--primary" type="submit">Guardar usuario</button>
+        <p class="form-status" id="user-status" role="status" aria-live="polite"></p>
       </form>
     </section>
   </div>

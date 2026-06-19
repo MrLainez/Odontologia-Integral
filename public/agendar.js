@@ -10,6 +10,7 @@ const confirmationToast = document.querySelector("#confirmation-toast");
 const toastMessage = document.querySelector("#toast-message");
 
 const availableTimes = ["09:00 AM", "10:30 AM", "12:00 PM", "04:00 PM", "05:30 PM"];
+const APPOINTMENT_ENDPOINT = "http://localhost:8080/api/citas";
 const monthNames = [
   "Enero",
   "Febrero",
@@ -32,6 +33,10 @@ let selectedDayKey = "";
 let selectedTime = "";
 let selectedFormattedDate = "";
 let toastTimer = 0;
+
+function getActivePatientId() {
+  return Number(localStorage.getItem("pacienteId") || "1");
+}
 
 // Convierte una fecha a formato YYYY-MM-DD para enviarla al backend.
 function getDateKey(date) {
@@ -191,28 +196,66 @@ function showConfirmationToast(message) {
   }, 4200);
 }
 
-// JSON que se enviaria al API de Kotlin para guardar la cita.
+function timeToTwentyFourHourValue(time) {
+  const [hourMinute, period] = time.split(" ");
+  const [rawHour, minute] = hourMinute.split(":").map(Number);
+  let hour = rawHour;
+
+  if (period === "PM" && hour !== 12) hour += 12;
+  if (period === "AM" && hour === 12) hour = 0;
+
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
 function buildAppointmentPayload() {
   return {
-    patientId: "demo-paciente-001",
-    odontologistId: "agenda-disponible",
-    appointmentDate: selectedDayKey,
-    appointmentTime: selectedTime,
-    status: "CONFIRMED",
-    source: "PATIENT_PUBLIC_PORTAL"
+    pacienteId: getActivePatientId(),
+    fechaHora: `${selectedDayKey}T${timeToTwentyFourHourValue(selectedTime)}`,
+    motivo: "Cita agendada desde Portal Publico"
   };
 }
 
-// RF3: confirma la cita, muestra el toast y deja el JSON en consola.
-confirmSlotButton.addEventListener("click", () => {
+async function saveAppointment(payload) {
+  const response = await fetch(APPOINTMENT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message = data.error || data.mensaje || "No fue posible confirmar la cita.";
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+// RF3: confirma la cita contra la API y muestra el toast.
+confirmSlotButton.addEventListener("click", async () => {
   if (!selectedDayKey || !selectedTime) return;
 
   const appointmentPayload = buildAppointmentPayload();
   const confirmationMessage = `Cita confirmada para el ${selectedFormattedDate} a las ${selectedTime}.`;
 
-  console.log("JSON para API Kotlin:", appointmentPayload);
-  scheduleStatus.textContent = confirmationMessage;
-  showConfirmationToast(confirmationMessage);
+  confirmSlotButton.disabled = true;
+  scheduleStatus.textContent = "Confirmando cita...";
+
+  try {
+    await saveAppointment(appointmentPayload);
+    scheduleStatus.textContent = confirmationMessage;
+    showConfirmationToast(confirmationMessage);
+  } catch (error) {
+    scheduleStatus.textContent = error.status === 409
+      ? "Ese horario ya fue ocupado. Selecciona otro horario."
+      : error.message || "No fue posible confirmar la cita.";
+    alert(scheduleStatus.textContent);
+    confirmSlotButton.disabled = false;
+  }
 });
 
 renderCalendar();

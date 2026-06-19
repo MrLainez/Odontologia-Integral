@@ -6,21 +6,27 @@ plugins {
 group = "com.odontologia"
 version = "1.0-SNAPSHOT"
 
-repositories {
-    mavenCentral()
-}
-
 dependencies {
-    implementation("io.javalin:javalin-bundle:7.2.2")
+    implementation("io.javalin:javalin-bundle:5.6.3")
     implementation("org.mariadb.jdbc:mariadb-java-client:3.1.0")
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
 kotlin {
-    jvmToolchain(17)
     sourceSets {
         main {
             kotlin.srcDir("src")
         }
+    }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
     }
 }
 

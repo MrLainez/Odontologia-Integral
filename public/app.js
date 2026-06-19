@@ -1,6 +1,7 @@
 const loginView = document.querySelector("#login-view");
 const portalView = document.querySelector("#portal-view");
 const loginForm = document.querySelector("#login-form");
+const registerForm = document.querySelector("#register-form");
 const requestForm = document.querySelector("#appointment-request-form");
 const loginStatus = document.querySelector("#login-status");
 const requestStatus = document.querySelector("#request-status");
@@ -12,8 +13,10 @@ const appointmentsEmpty = document.querySelector("#appointments-empty");
 const cancelDialog = document.querySelector("#cancel-dialog");
 const confirmCancelButton = document.querySelector("#confirm-cancel-button");
 
-const AUTH_ENDPOINT = "/api/auth/login";
-const APPOINTMENT_ENDPOINT = "/api/patient/appointments";
+const API_BASE_URL = "http://localhost:8080";
+const REGISTER_ENDPOINT = `${API_BASE_URL}/api/pacientes`;
+const AUTH_ENDPOINT = `${API_BASE_URL}/api/login`;
+const APPOINTMENT_ENDPOINT = `${API_BASE_URL}/api/citas`;
 
 let selectedAppointmentCard = null;
 
@@ -94,38 +97,72 @@ function updateAppointmentsEmptyState() {
   appointmentsEmpty.classList.toggle("is-hidden", activeCards.length > 0);
 }
 
-// Llamada preparada para el futuro endpoint de autenticacion.
-async function login(payload) {
-  const response = await fetch(AUTH_ENDPOINT, {
+async function postJson(url, payload) {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
   });
+  const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error("No fue posible iniciar sesion.");
+    const message = data.error || data.mensaje || "No fue posible completar la solicitud.";
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
-  return response.json().catch(() => ({}));
+  return data;
 }
 
-// Llamada preparada para crear solicitudes de cita.
-async function createAppointment(payload) {
-  const response = await fetch(APPOINTMENT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+async function registerPatient(payload) {
+  return postJson(REGISTER_ENDPOINT, payload);
+}
 
-  if (!response.ok) {
-    throw new Error("No fue posible crear la solicitud.");
+async function login(payload) {
+  return postJson(AUTH_ENDPOINT, payload);
+}
+
+async function createAppointment(payload) {
+  return postJson(APPOINTMENT_ENDPOINT, payload);
+}
+
+function saveActivePatient(response) {
+  const patient = response.paciente || response.patient || null;
+  const patientId = patient?.id || response.pacienteId || response.id;
+
+  if (patientId) {
+    localStorage.setItem("pacienteId", String(patientId));
   }
 
-  return response.json().catch(() => ({}));
+  if (patient?.nombre) {
+    localStorage.setItem("pacienteNombre", patient.nombre);
+  }
+}
+
+if (registerForm) {
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const data = new FormData(registerForm);
+    const payload = {
+      nombre: data.get("nombre")?.trim() || "",
+      telefono: data.get("telefono")?.trim() || "",
+      email: data.get("email")?.trim() || "",
+      password: data.get("password") || ""
+    };
+
+    try {
+      const response = await registerPatient(payload);
+      saveActivePatient(response);
+      alert("Paciente registrado correctamente.");
+      registerForm.reset();
+    } catch (error) {
+      alert(error.message || "No fue posible registrar el paciente.");
+    }
+  });
 }
 
 loginForm.addEventListener("input", (event) => {
@@ -147,7 +184,6 @@ togglePasswordButton.addEventListener("click", () => {
   togglePasswordButton.setAttribute("aria-label", shouldShowPassword ? "Ocultar contrasena" : "Mostrar contrasena");
 });
 
-// Login: si el backend aun no responde, permite entrar en modo demostracion.
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginStatus.classList.remove("is-error");
@@ -170,12 +206,12 @@ loginForm.addEventListener("submit", async (event) => {
   submitButton.textContent = "Validando...";
 
   try {
-    await login(payload);
+    const response = await login(payload);
+    saveActivePatient(response);
     showPortal();
   } catch (error) {
-    console.info("Backend de autenticacion no disponible todavia. Flujo visual habilitado:", payload.email);
-    loginStatus.textContent = "Acceso de demostracion habilitado mientras se conecta el backend.";
-    showPortal();
+    loginStatus.textContent = error.message || "No fue posible iniciar sesion.";
+    loginStatus.classList.add("is-error");
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Entrar al portal";
@@ -195,21 +231,23 @@ requestForm.addEventListener("submit", async (event) => {
   }
 
   const data = new FormData(requestForm);
+  const patientId = Number(localStorage.getItem("pacienteId") || "1");
   const payload = {
-    service: data.get("service"),
-    preferredDate: data.get("date"),
-    notes: data.get("notes").trim()
+    pacienteId: patientId,
+    fechaHora: `${data.get("date")}T09:00`,
+    motivo: `${data.get("service")}${data.get("notes").trim() ? ` - ${data.get("notes").trim()}` : ""}`
   };
 
   try {
     await createAppointment(payload);
-    requestStatus.textContent = "Solicitud enviada correctamente.";
+    requestStatus.textContent = "Cita registrada correctamente.";
+    requestForm.reset();
   } catch (error) {
-    console.info("Backend de citas no disponible todavia. Payload listo:", payload);
-    requestStatus.textContent = "Solicitud preparada. Se enviara cuando el backend este conectado.";
+    requestStatus.classList.add("is-error");
+    requestStatus.textContent = error.status === 409
+      ? "Ese horario ya fue ocupado. Selecciona otro horario."
+      : error.message || "No fue posible registrar la cita.";
   }
-
-  requestForm.reset();
 });
 
 logoutButton.addEventListener("click", showLogin);
