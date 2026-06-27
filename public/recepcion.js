@@ -8,12 +8,60 @@ const openUserButton = document.querySelector("#open-user-modal");
 const userForm = document.querySelector("#user-form");
 const userStatus = document.querySelector("#user-status");
 const usersList = document.querySelector("#users-list");
+const adminLogoutButton = document.querySelector("#admin-logout");
+const receptionNav = document.querySelector(".reception-nav");
+const receptionSections = document.querySelectorAll(".reception-section");
+const patientFilter = document.querySelector("#patient-filter");
+const patientsList = document.querySelector("#patients-list");
+const paymentForm = document.querySelector("#payment-form");
+const paymentStatus = document.querySelector("#payment-status");
+const paymentsList = document.querySelector("#payments-list");
+const adminUserForm = document.querySelector("#admin-user-form");
+const adminUserStatus = document.querySelector("#admin-user-status");
+const adminUsersList = document.querySelector("#admin-users-list");
+const statTotal = document.querySelector("#stat-total");
+const statConfirmed = document.querySelector("#stat-confirmed");
+const statAttended = document.querySelector("#stat-attended");
+const reportAppointments = document.querySelector("#report-appointments");
+const reportPayments = document.querySelector("#report-payments");
+const reportPatients = document.querySelector("#report-patients");
+const agendaDateInput = document.querySelector("#agenda-date");
+const businessHoursForm = document.querySelector("#business-hours-form");
+const businessHoursList = document.querySelector("#business-hours-list");
+const businessHoursStatus = document.querySelector("#business-hours-status");
+const holidayForm = document.querySelector("#holiday-form");
+const holidayList = document.querySelector("#holiday-list");
+const holidayStatus = document.querySelector("#holiday-status");
+const appointmentRequestsList = document.querySelector("#appointment-requests-list");
+const appointmentRequestsStatus = document.querySelector("#appointment-requests-status");
 
 // Endpoints usados por el panel de recepcion.
-const API_BASE_URL = "http://localhost:8080";
+const API_BASE_URL = window.location.origin;
 const API_CITAS_URL = `${API_BASE_URL}/api/citas`;
-const API_CITAS_HOY_URL = `${API_BASE_URL}/api/citas/hoy`;
 const API_PACIENTES_URL = `${API_BASE_URL}/api/pacientes`;
+const API_PAGOS_URL = `${API_BASE_URL}/api/pagos`;
+const API_ADMIN_USERS_URL = `${API_BASE_URL}/api/admin/usuarios`;
+const API_RECEPTION_REPORT_URL = `${API_BASE_URL}/api/reportes/recepcion`;
+const API_BUSINESS_HOURS_URL = `${API_BASE_URL}/api/horarios-atencion`;
+const API_HOLIDAYS_URL = `${API_BASE_URL}/api/dias-feriados`;
+const API_APPOINTMENT_REQUESTS_URL = `${API_BASE_URL}/api/solicitudes-cita`;
+
+// Proteccion simple de pantalla: requiere sesion administrativa local.
+const adminSession = JSON.parse(localStorage.getItem("adminSession") || "null");
+const authToken = localStorage.getItem("authToken");
+const allowedReceptionRoles = ["ADMIN", "RECEPCION"];
+
+if (!adminSession || !authToken || !allowedReceptionRoles.includes(adminSession.rol)) {
+  localStorage.removeItem("adminSession");
+  localStorage.removeItem("authToken");
+  window.location.href = "index.html";
+}
+
+if (adminSession?.rol !== "ADMIN") {
+  document.querySelectorAll("[data-admin-only]").forEach((element) => {
+    element.remove();
+  });
+}
 
 // Evita registrar citas manuales en fechas pasadas.
 const today = new Date();
@@ -21,6 +69,10 @@ const manualDateInput = document.querySelector("#inputFechaHora");
 
 if (manualDateInput) {
   manualDateInput.min = today.toISOString().slice(0, 16);
+}
+
+if (agendaDateInput) {
+  agendaDateInput.value = today.toISOString().slice(0, 10);
 }
 
 // Configuracion visual y valor enviado a la API para cada estatus.
@@ -46,6 +98,40 @@ const statusConfig = {
     className: "status-cancelled"
   }
 };
+
+const weekDays = {
+  1: "Lunes",
+  2: "Martes",
+  3: "Miercoles",
+  4: "Jueves",
+  5: "Viernes",
+  6: "Sabado",
+  7: "Domingo"
+};
+
+function buildHalfHourOptions(selectedValue = "09:00") {
+  const options = [];
+
+  for (let hour = 7; hour <= 21; hour += 1) {
+    [0, 30].forEach((minute) => {
+      const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+      const selected = value === String(selectedValue).slice(0, 5) ? "selected" : "";
+      options.push(`<option value="${value}" ${selected}>${value}</option>`);
+    });
+  }
+
+  return options.join("");
+}
+
+function setActiveSection(sectionId) {
+  receptionSections.forEach((section) => {
+    section.classList.toggle("is-active", section.dataset.section === sectionId);
+  });
+
+  receptionNav.querySelectorAll("a").forEach((link) => {
+    link.classList.toggle("is-active", link.getAttribute("href") === `#${sectionId}`);
+  });
+}
 
 // Evita que texto de la base rompa el HTML al inyectarlo en la tabla.
 function escapeHtml(value) {
@@ -167,11 +253,46 @@ function updateAppointmentStatus(row, status) {
   row.classList.add(config.className);
   row.dataset.status = status;
   badge.textContent = config.label;
+  updateDashboardStats();
+}
+
+function updateDashboardStats() {
+  const rows = [...agendaTable.querySelectorAll(".appointment-row")]
+    .filter((row) => !row.dataset.agendaMessage);
+  const confirmed = rows.filter((row) => row.dataset.status === "confirmed").length;
+  const attended = rows.filter((row) => row.dataset.status === "attended").length;
+
+  statTotal.textContent = rows.length;
+  statConfirmed.textContent = confirmed;
+  statAttended.textContent = attended;
+}
+
+function clearPatients() {
+  patientsList.innerHTML = "";
+}
+
+function clearPatientUsers() {
+  usersList.innerHTML = "";
+}
+
+function clearPayments() {
+  paymentsList.innerHTML = "";
+}
+
+function clearAdminUsers() {
+  if (adminUsersList) adminUsersList.innerHTML = "";
 }
 
 // Helper comun para fetch con JSON y errores legibles.
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
+  const token = localStorage.getItem("authToken");
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    }
+  });
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -190,23 +311,376 @@ async function loadTodayAgenda() {
   showAgendaMessage("Cargando agenda...");
 
   try {
-    const data = await fetchJson(API_CITAS_HOY_URL);
+    const selectedDate = agendaDateInput?.value || today.toISOString().slice(0, 10);
+    const data = await fetchJson(`${API_CITAS_URL}?fecha=${encodeURIComponent(selectedDate)}`);
     const appointments = Array.isArray(data) ? data : data.citas || data.appointments || [];
 
     clearAgendaRows();
 
     if (appointments.length === 0) {
       showAgendaMessage("No hay citas registradas para hoy.");
+      updateDashboardStats();
       return;
     }
 
     appointments.forEach((appointment) => {
       agendaTable.append(createAppointmentRow(appointment));
     });
+    updateDashboardStats();
   } catch (error) {
     clearAgendaRows();
     showAgendaMessage("No se pudo cargar la agenda. Verifica que el servidor este encendido.", true);
+    updateDashboardStats();
   }
+}
+
+async function loadAppointmentRequests() {
+  if (!appointmentRequestsList) return;
+
+  appointmentRequestsStatus.textContent = "Cargando solicitudes...";
+
+  try {
+    const requests = await fetchJson(`${API_APPOINTMENT_REQUESTS_URL}?estatus=PENDIENTE`);
+    renderAppointmentRequests(requests);
+    appointmentRequestsStatus.textContent = "";
+  } catch (error) {
+    appointmentRequestsList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudieron cargar solicitudes</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+    appointmentRequestsStatus.textContent = error.message || "No fue posible cargar solicitudes.";
+    appointmentRequestsStatus.classList.add("is-error");
+  }
+}
+
+function renderAppointmentRequests(requests) {
+  appointmentRequestsList.innerHTML = "";
+
+  if (!requests.length) {
+    appointmentRequestsList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>Sin solicitudes pendientes</strong>
+          <span>Las nuevas solicitudes de pacientes apareceran aqui.</span>
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  requests.forEach((request) => {
+    const row = document.createElement("article");
+    row.className = "record-row";
+    row.dataset.requestId = request.id;
+    row.innerHTML = `
+      <div>
+        <strong>${escapeHtml(request.pacienteNombre)} - ${formatDateOnly(request.fecha)} ${escapeHtml(String(request.hora).slice(0, 5))}</strong>
+        <span>${escapeHtml(request.motivo || "Solicitud de cita")}</span>
+      </div>
+      <div class="record-actions">
+        <button type="button" class="button button--secondary" data-accept-request>Aceptar</button>
+        <button type="button" class="button button--danger" data-reject-request>Rechazar</button>
+      </div>
+    `;
+    appointmentRequestsList.append(row);
+  });
+}
+
+async function acceptAppointmentRequest(requestId) {
+  return fetchJson(`${API_APPOINTMENT_REQUESTS_URL}/${requestId}/aceptar`, {
+    method: "PUT"
+  });
+}
+
+async function rejectAppointmentRequest(requestId) {
+  return fetchJson(`${API_APPOINTMENT_REQUESTS_URL}/${requestId}/rechazar`, {
+    method: "PUT"
+  });
+}
+
+async function loadPatients() {
+  try {
+    const patients = await fetchJson(API_PACIENTES_URL);
+
+    clearPatients();
+    clearPatientUsers();
+    patients.forEach((patient) => {
+      addPatientRow(patient);
+      addPortalUserRow(patient);
+    });
+    updateDashboardStats();
+  } catch (error) {
+    clearPatients();
+    clearPatientUsers();
+    patientsList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudieron cargar pacientes</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+    usersList.innerHTML = `
+      <article class="user-row">
+        <div>
+          <strong>No se pudieron cargar usuarios</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+        <span class="muted-label">Sin datos</span>
+      </article>
+    `;
+  }
+}
+
+async function loadPayments() {
+  try {
+    const payments = await fetchJson(API_PAGOS_URL);
+
+    clearPayments();
+    payments.forEach(addPaymentRow);
+    updateDashboardStats();
+  } catch (error) {
+    clearPayments();
+    paymentsList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudieron cargar pagos</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+  }
+}
+
+async function loadAdminUsers() {
+  if (!adminUsersList || adminSession?.rol !== "ADMIN") return;
+
+  try {
+    const users = await fetchJson(API_ADMIN_USERS_URL);
+
+    clearAdminUsers();
+    users.forEach(addAdminUserRow);
+  } catch (error) {
+    clearAdminUsers();
+    adminUsersList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudo cargar el personal</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+  }
+}
+
+async function loadReceptionReport() {
+  try {
+    const report = await fetchJson(API_RECEPTION_REPORT_URL);
+
+    reportAppointments.textContent = report.citasHoy ?? "0";
+    reportPayments.textContent = report.pagosRegistrados ?? "0";
+    reportPatients.textContent = report.pacientesActivos ?? "0";
+  } catch (error) {
+    updateDashboardStats();
+  }
+}
+
+async function loadBusinessHours() {
+  if (!businessHoursList) return;
+
+  businessHoursStatus.textContent = "Cargando horarios...";
+
+  try {
+    const schedules = await fetchJson(API_BUSINESS_HOURS_URL);
+    renderBusinessHours(schedules);
+    businessHoursStatus.textContent = "";
+  } catch (error) {
+    businessHoursList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudieron cargar los horarios</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+    businessHoursStatus.textContent = error.message || "No fue posible cargar horarios.";
+    businessHoursStatus.classList.add("is-error");
+  }
+}
+
+function renderBusinessHours(schedules) {
+  businessHoursList.innerHTML = "";
+
+  schedules.forEach((schedule) => {
+    const row = document.createElement("article");
+    row.className = "business-hours-row";
+    row.dataset.day = schedule.diaSemana;
+    row.innerHTML = `
+      <label class="business-hours-toggle">
+        <input type="checkbox" name="activo-${schedule.diaSemana}" ${schedule.activo ? "checked" : ""}>
+        <span>${escapeHtml(schedule.diaNombre || weekDays[schedule.diaSemana])}</span>
+      </label>
+      <div class="business-hours-times">
+        <label>
+          Inicio
+          <select name="inicio-${schedule.diaSemana}">
+            ${buildHalfHourOptions(schedule.horaInicio || "09:00")}
+          </select>
+        </label>
+        <label>
+          Fin
+          <select name="fin-${schedule.diaSemana}">
+            ${buildHalfHourOptions(schedule.horaFin || "18:00")}
+          </select>
+        </label>
+      </div>
+    `;
+    businessHoursList.append(row);
+  });
+}
+
+function buildBusinessHoursPayload() {
+  const horarios = [...businessHoursList.querySelectorAll(".business-hours-row")].map((row) => {
+    const day = Number(row.dataset.day);
+    return {
+      diaSemana: day,
+      activo: row.querySelector(`[name="activo-${day}"]`).checked,
+      horaInicio: row.querySelector(`[name="inicio-${day}"]`).value,
+      horaFin: row.querySelector(`[name="fin-${day}"]`).value
+    };
+  });
+
+  return { horarios };
+}
+
+async function saveBusinessHours(event) {
+  event.preventDefault();
+
+  businessHoursStatus.classList.remove("is-error");
+  businessHoursStatus.textContent = "Guardando horarios...";
+
+  try {
+    const data = await fetchJson(API_BUSINESS_HOURS_URL, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(buildBusinessHoursPayload())
+    });
+
+    renderBusinessHours(data.horarios || []);
+    businessHoursStatus.textContent = "Horarios actualizados correctamente.";
+    await loadTodayAgenda();
+  } catch (error) {
+    businessHoursStatus.textContent = error.message || "No fue posible guardar horarios.";
+    businessHoursStatus.classList.add("is-error");
+  }
+}
+
+async function loadHolidays() {
+  if (!holidayList) return;
+
+  try {
+    const holidays = await fetchJson(API_HOLIDAYS_URL);
+    renderHolidays(holidays);
+  } catch (error) {
+    holidayList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No se pudieron cargar cierres</strong>
+          <span>Verifica la conexion con el servidor.</span>
+        </div>
+      </article>
+    `;
+  }
+}
+
+function renderHolidays(holidays) {
+  holidayList.innerHTML = "";
+
+  if (!holidays.length) {
+    holidayList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>Sin cierres especiales</strong>
+          <span>La disponibilidad depende solo del horario semanal.</span>
+        </div>
+      </article>
+    `;
+    return;
+  }
+
+  holidays.forEach((holiday) => {
+    const row = document.createElement("article");
+    row.className = "record-row";
+    row.dataset.holidayId = holiday.id;
+    row.innerHTML = `
+      <div>
+        <strong>${formatDateOnly(holiday.fecha)}</strong>
+        <span>${escapeHtml(holiday.motivo || "Cierre especial")}</span>
+      </div>
+      <div class="record-actions">
+        <button type="button" class="button button--danger" data-delete-holiday>Eliminar</button>
+      </div>
+    `;
+    holidayList.append(row);
+  });
+}
+
+function formatDateOnly(dateValue) {
+  if (!dateValue) return "Fecha no registrada";
+
+  return new Date(`${dateValue}T00:00:00`).toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+async function createHoliday(event) {
+  event.preventDefault();
+
+  const data = new FormData(holidayForm);
+  const payload = {
+    fecha: data.get("fecha"),
+    motivo: data.get("motivo").trim() || "Cierre especial"
+  };
+
+  if (!payload.fecha) {
+    holidayStatus.textContent = "Selecciona la fecha del cierre.";
+    holidayStatus.classList.add("is-error");
+    return;
+  }
+
+  holidayStatus.classList.remove("is-error");
+  holidayStatus.textContent = "Guardando cierre...";
+
+  try {
+    const response = await fetchJson(API_HOLIDAYS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    renderHolidays(response.feriados || []);
+    holidayForm.reset();
+    holidayStatus.textContent = "Cierre registrado correctamente.";
+  } catch (error) {
+    holidayStatus.textContent = error.message || "No fue posible registrar el cierre.";
+    holidayStatus.classList.add("is-error");
+  }
+}
+
+async function deleteHoliday(holidayId) {
+  await fetchJson(`${API_HOLIDAYS_URL}/${holidayId}`, {
+    method: "DELETE"
+  });
 }
 
 // Guarda el nuevo estatus de una cita en la API.
@@ -322,7 +796,7 @@ async function guardarCita() {
   const cita = buildManualAppointmentPayload(manualForm);
 
   try {
-    const data = await fetchJson(API_CITAS_URL, {
+    await fetchJson(API_CITAS_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -334,7 +808,9 @@ async function guardarCita() {
     manualForm.reset();
     manualStatus.classList.remove("is-error");
     manualStatus.textContent = "Cita guardada correctamente.";
-    agendaTable.append(createAppointmentRow({ ...cita, id: data.id, estatus: "Confirmada" }));
+    await loadTodayAgenda();
+    await loadReceptionReport();
+    window.setTimeout(closeManualModal, 650);
     return true;
   } catch (error) {
     const message = error.status === 409
@@ -362,6 +838,12 @@ function buildUserPayload(form) {
 
 // Agrega el usuario creado a la lista del dashboard.
 function addUserRow(user) {
+  addPortalUserRow(user);
+  addPatientRow(user);
+  updateDashboardStats();
+}
+
+function addPortalUserRow(user) {
   const row = document.createElement("article");
   row.className = "user-row";
   row.innerHTML = `
@@ -372,7 +854,219 @@ function addUserRow(user) {
     <span class="status-pill">Activo</span>
   `;
 
-  usersList.prepend(row);
+  usersList.append(row);
+}
+
+function addPatientRow(patient, prepend = false) {
+  const row = document.createElement("article");
+  const searchableText = `${patient.nombre} ${patient.email} ${patient.telefono}`.toLowerCase();
+  const isActive = patient.activo !== false;
+
+  row.className = "record-row";
+  row.dataset.patientId = patient.id || "";
+  row.dataset.patientName = patient.nombre || "";
+  row.dataset.patientEmail = patient.email || "";
+  row.dataset.patientPhone = patient.telefono || "";
+  row.dataset.patientText = searchableText;
+  row.innerHTML = `
+    <div>
+      <strong>${escapeHtml(patient.nombre)}</strong>
+      <span>${escapeHtml(patient.email)} · ${escapeHtml(patient.telefono)}</span>
+    </div>
+    <div class="record-actions">
+      <span class="${isActive ? "status-pill" : "muted-label"}">${isActive ? "Activo" : "Inactivo"}</span>
+      ${isActive ? `
+        <button type="button" class="button button--secondary" data-edit-patient>Editar</button>
+        <button type="button" class="button button--secondary" data-reset-patient-password>Contrasena</button>
+        <button type="button" class="button button--danger" data-delete-patient>Eliminar</button>
+      ` : ""}
+    </div>
+  `;
+
+  if (prepend) {
+    patientsList.prepend(row);
+  } else {
+    patientsList.append(row);
+  }
+}
+
+async function updatePatient(patientId, payload) {
+  return fetchJson(`${API_PACIENTES_URL}/${patientId}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function resetPatientPassword(patientId, password) {
+  return fetchJson(`${API_PACIENTES_URL}/${patientId}/password`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password })
+  });
+}
+
+async function deletePatient(patientId) {
+  return fetchJson(`${API_PACIENTES_URL}/${patientId}`, {
+    method: "DELETE"
+  });
+}
+
+function addPaymentRow(payment, prepend = false) {
+  const row = document.createElement("article");
+  const amount = payment.monto || payment.amount;
+  const concept = payment.concepto || payment.concept;
+  const patient = payment.pacienteNombre || payment.patient;
+  const method = payment.metodo || payment.method;
+  const date = payment.fechaRegistro
+    ? new Date(payment.fechaRegistro).toLocaleDateString("es-MX")
+    : new Date().toLocaleDateString("es-MX");
+
+  row.className = "record-row";
+  row.innerHTML = `
+    <div>
+      <strong>${formatCurrency(amount)} - ${escapeHtml(concept)}</strong>
+      <span>${escapeHtml(patient)} - ${escapeHtml(method)} - ${date}</span>
+    </div>
+    <span class="muted-label">Registrado</span>
+  `;
+
+  if (prepend) {
+    paymentsList.prepend(row);
+  } else {
+    paymentsList.append(row);
+  }
+}
+
+function roleLabel(role) {
+  const labels = {
+    ADMIN: "Administrador",
+    RECEPCION: "Recepcionista",
+    ODONTOLOGO: "Odontologo"
+  };
+
+  return labels[role] || role;
+}
+
+function addAdminUserRow(user) {
+  const row = document.createElement("article");
+  const isActive = user.activo !== false;
+
+  row.className = "record-row";
+  row.dataset.adminUserId = user.id;
+  row.innerHTML = `
+    <div>
+      <strong>${escapeHtml(user.nombre)}</strong>
+      <span>${escapeHtml(user.email)} - ${roleLabel(user.rol)}</span>
+    </div>
+    <div class="record-actions">
+      <span class="${isActive ? "status-pill" : "muted-label"}">${isActive ? "Activo" : "Inactivo"}</span>
+      ${isActive ? `
+        <button type="button" class="button button--secondary" data-reset-admin-password>Contrasena</button>
+        <button type="button" class="button button--danger" data-delete-admin-user>Eliminar</button>
+      ` : ""}
+    </div>
+  `;
+
+  adminUsersList.append(row);
+}
+
+function buildAdminUserPayload(form) {
+  const data = new FormData(form);
+
+  return {
+    nombre: data.get("nombre").trim(),
+    email: data.get("email").trim(),
+    password: data.get("password"),
+    rol: data.get("rol")
+  };
+}
+
+async function createAdminUser(payload) {
+  return fetchJson(API_ADMIN_USERS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function resetAdminPassword(userId, password) {
+  return fetchJson(`${API_ADMIN_USERS_URL}/${userId}/password`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ password })
+  });
+}
+
+async function deleteAdminUser(userId) {
+  return fetchJson(`${API_ADMIN_USERS_URL}/${userId}`, {
+    method: "DELETE"
+  });
+}
+
+function filterPatients(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  patientsList.querySelectorAll(".record-row").forEach((row) => {
+    row.classList.toggle("is-hidden", Boolean(normalizedQuery) && !row.dataset.patientText.includes(normalizedQuery));
+  });
+}
+
+function formatCurrency(value) {
+  return Number(value).toLocaleString("es-MX", {
+    style: "currency",
+    currency: "MXN"
+  });
+}
+
+async function registerPayment(form) {
+  const data = new FormData(form);
+  const patient = data.get("patient").trim();
+  const concept = data.get("concept").trim();
+  const amount = Number(data.get("amount"));
+  const method = data.get("method");
+
+  if (!patient || !concept || !amount || !method) {
+    paymentStatus.textContent = "Completa todos los datos del pago.";
+    paymentStatus.classList.add("is-error");
+    return;
+  }
+
+  const payload = {
+    pacienteNombre: patient,
+    concepto: concept,
+    monto: amount,
+    metodo: method
+  };
+
+  paymentStatus.classList.remove("is-error");
+  paymentStatus.textContent = "Guardando pago...";
+
+  try {
+    await fetchJson(API_PAGOS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    await loadPayments();
+    await loadReceptionReport();
+    paymentForm.reset();
+    paymentStatus.textContent = "Pago registrado en bitacora.";
+  } catch (error) {
+    paymentStatus.textContent = error.message || "No fue posible guardar el pago.";
+    paymentStatus.classList.add("is-error");
+  }
 }
 
 // Crea el usuario/paciente desde recepcion.
@@ -405,6 +1099,7 @@ agendaTable.addEventListener("click", async (event) => {
   try {
     await saveAppointmentStatus(appointmentId, newStatus);
     updateAppointmentStatus(row, newStatus);
+    loadReceptionReport();
   } catch (error) {
     alert(error.message || "No se pudo actualizar el estatus. Verifica que el servidor este encendido.");
   } finally {
@@ -414,6 +1109,243 @@ agendaTable.addEventListener("click", async (event) => {
 
 openManualButton.addEventListener("click", openManualModal);
 openUserButton.addEventListener("click", openUserModal);
+
+adminLogoutButton.addEventListener("click", () => {
+  localStorage.removeItem("adminSession");
+  localStorage.removeItem("authToken");
+  window.location.href = "index.html";
+});
+
+receptionNav.addEventListener("click", (event) => {
+  const link = event.target.closest("a[href^='#']");
+  if (!link) return;
+
+  event.preventDefault();
+  setActiveSection(link.getAttribute("href").slice(1));
+});
+
+patientFilter.addEventListener("input", () => {
+  filterPatients(patientFilter.value);
+});
+
+if (agendaDateInput) {
+  agendaDateInput.addEventListener("change", loadTodayAgenda);
+}
+
+if (businessHoursForm) {
+  businessHoursForm.addEventListener("submit", saveBusinessHours);
+}
+
+if (holidayForm) {
+  holidayForm.addEventListener("submit", createHoliday);
+}
+
+if (holidayList) {
+  holidayList.addEventListener("click", async (event) => {
+    const deleteButton = event.target.closest("[data-delete-holiday]");
+    if (!deleteButton) return;
+
+    const row = deleteButton.closest("[data-holiday-id]");
+    const confirmed = window.confirm("Este dia dejara de estar marcado como cierre especial. Deseas continuar?");
+
+    if (!confirmed) return;
+
+    try {
+      await deleteHoliday(row.dataset.holidayId);
+      await loadHolidays();
+      await loadTodayAgenda();
+      holidayStatus.textContent = "Cierre eliminado correctamente.";
+      holidayStatus.classList.remove("is-error");
+    } catch (error) {
+      holidayStatus.textContent = error.message || "No fue posible eliminar el cierre.";
+      holidayStatus.classList.add("is-error");
+    }
+  });
+}
+
+if (appointmentRequestsList) {
+  appointmentRequestsList.addEventListener("click", async (event) => {
+    const row = event.target.closest("[data-request-id]");
+    if (!row) return;
+
+    const requestId = row.dataset.requestId;
+
+    try {
+      if (event.target.closest("[data-accept-request]")) {
+        await acceptAppointmentRequest(requestId);
+        appointmentRequestsStatus.textContent = "Solicitud aceptada y cita creada.";
+      }
+
+      if (event.target.closest("[data-reject-request]")) {
+        const confirmed = window.confirm("Deseas rechazar esta solicitud de cita?");
+        if (!confirmed) return;
+
+        await rejectAppointmentRequest(requestId);
+        appointmentRequestsStatus.textContent = "Solicitud rechazada correctamente.";
+      }
+
+      appointmentRequestsStatus.classList.remove("is-error");
+      await loadAppointmentRequests();
+      await loadTodayAgenda();
+      await loadReceptionReport();
+    } catch (error) {
+      appointmentRequestsStatus.textContent = error.status === 409
+        ? "Ese horario ya fue ocupado. Rechaza la solicitud o coordina otro horario con el paciente."
+        : error.message || "No fue posible procesar la solicitud.";
+      appointmentRequestsStatus.classList.add("is-error");
+    }
+  });
+}
+
+patientsList.addEventListener("click", async (event) => {
+  const row = event.target.closest("[data-patient-id]");
+  if (!row) return;
+
+  const patientId = row.dataset.patientId;
+
+  if (event.target.closest("[data-edit-patient]")) {
+    const currentName = row.dataset.patientName || "";
+    const currentEmail = row.dataset.patientEmail || "";
+    const currentPhone = row.dataset.patientPhone || "";
+    const nombre = window.prompt("Nombre del paciente:", currentName);
+
+    if (nombre === null) return;
+
+    const telefono = window.prompt("Telefono del paciente:", currentPhone);
+
+    if (telefono === null) return;
+
+    const email = window.prompt("Correo del paciente:", currentEmail);
+
+    if (email === null) return;
+
+    if (!nombre.trim() || !telefono.trim() || !email.trim()) {
+      alert("Nombre, telefono y correo son obligatorios.");
+      return;
+    }
+
+    try {
+      await updatePatient(patientId, {
+        nombre,
+        telefono,
+        email
+      });
+      await loadPatients();
+      await loadReceptionReport();
+      alert("Paciente actualizado correctamente.");
+    } catch (error) {
+      alert(error.message || "No fue posible actualizar el paciente.");
+    }
+  }
+
+  if (event.target.closest("[data-reset-patient-password]")) {
+    const newPassword = window.prompt("Nueva contrasena temporal para este paciente:");
+
+    if (!newPassword) return;
+    if (newPassword.length < 6) {
+      alert("La contrasena debe tener al menos 6 caracteres.");
+      return;
+    }
+
+    try {
+      await resetPatientPassword(patientId, newPassword);
+      alert("Contrasena del paciente actualizada correctamente.");
+    } catch (error) {
+      alert(error.message || "No fue posible actualizar la contrasena.");
+    }
+  }
+
+  if (event.target.closest("[data-delete-patient]")) {
+    const confirmed = window.confirm("Se borrara el perfil del paciente junto con citas, expediente, notas y odontograma. Esta accion no se puede deshacer. Deseas continuar?");
+
+    if (!confirmed) return;
+
+    try {
+      await deletePatient(patientId);
+      await loadPatients();
+      await loadTodayAgenda();
+      await loadReceptionReport();
+      alert("Paciente e historial clinico eliminados correctamente.");
+    } catch (error) {
+      alert(error.message || "No fue posible eliminar el paciente.");
+    }
+  }
+});
+
+paymentForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  registerPayment(paymentForm);
+});
+
+if (adminUserForm) {
+  adminUserForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const payload = buildAdminUserPayload(adminUserForm);
+    const submitButton = adminUserForm.querySelector("button[type='submit']");
+
+    if (!payload.nombre || !payload.email || payload.password.length < 6 || !payload.rol) {
+      adminUserStatus.textContent = "Completa nombre, correo, rol y una contrasena de al menos 6 caracteres.";
+      adminUserStatus.classList.add("is-error");
+      return;
+    }
+
+    submitButton.disabled = true;
+    adminUserStatus.classList.remove("is-error");
+    adminUserStatus.textContent = "Creando usuario interno...";
+
+    try {
+      await createAdminUser(payload);
+      clearAdminUsers();
+      await loadAdminUsers();
+      adminUserForm.reset();
+      adminUserStatus.textContent = "Usuario interno creado correctamente.";
+    } catch (error) {
+      adminUserStatus.textContent = error.message || "No fue posible crear el usuario interno.";
+      adminUserStatus.classList.add("is-error");
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+
+  adminUsersList.addEventListener("click", async (event) => {
+    const row = event.target.closest("[data-admin-user-id]");
+    if (!row) return;
+
+    const userId = row.dataset.adminUserId;
+
+    if (event.target.closest("[data-reset-admin-password]")) {
+      const newPassword = window.prompt("Nueva contrasena temporal para este usuario:");
+
+      if (!newPassword) return;
+      if (newPassword.length < 6) {
+        alert("La contrasena debe tener al menos 6 caracteres.");
+        return;
+      }
+
+      try {
+        await resetAdminPassword(userId, newPassword);
+        alert("Contrasena actualizada correctamente.");
+      } catch (error) {
+        alert(error.message || "No fue posible actualizar la contrasena.");
+      }
+    }
+
+    if (event.target.closest("[data-delete-admin-user]")) {
+      const confirmed = window.confirm("Este usuario interno se eliminara y ya no podra iniciar sesion. Deseas continuar?");
+
+      if (!confirmed) return;
+
+      try {
+        await deleteAdminUser(userId);
+        row.remove();
+        alert("Usuario eliminado correctamente.");
+      } catch (error) {
+        alert(error.message || "No fue posible eliminar el usuario.");
+      }
+    }
+  });
+}
 
 // Cierre de modales desde backdrop o boton cerrar.
 manualModal.addEventListener("click", (event) => {
@@ -490,7 +1422,8 @@ userForm.addEventListener("submit", async (event) => {
 
   try {
     await crearUsuarioPaciente(payload);
-    addUserRow(payload);
+    await loadPatients();
+    await loadReceptionReport();
     userStatus.textContent = "Usuario creado correctamente.";
     alert("Usuario de paciente creado correctamente.");
     window.setTimeout(closeUserModal, 650);
@@ -506,5 +1439,16 @@ userForm.addEventListener("submit", async (event) => {
 
 // Al entrar al panel se carga la agenda desde la API.
 document.addEventListener("DOMContentLoaded", loadTodayAgenda);
+document.addEventListener("DOMContentLoaded", loadAppointmentRequests);
+document.addEventListener("DOMContentLoaded", loadPatients);
+document.addEventListener("DOMContentLoaded", loadPayments);
+document.addEventListener("DOMContentLoaded", loadAdminUsers);
+document.addEventListener("DOMContentLoaded", loadReceptionReport);
+document.addEventListener("DOMContentLoaded", loadBusinessHours);
+document.addEventListener("DOMContentLoaded", loadHolidays);
+document.addEventListener("DOMContentLoaded", () => {
+  const initialSection = window.location.hash.replace("#", "") || "agenda";
+  setActiveSection(initialSection);
+});
 
 window.guardarCita = guardarCita;

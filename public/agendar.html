@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Agenda una nueva cita en el portal de pacientes de Odontologia Integral.">
   <title>Agendar Nueva Cita | Odontologia Integral</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260627-4">
 </head>
 <body>
   <main class="app-shell schedule-shell">
@@ -25,8 +25,8 @@
     <section class="schedule-layout" aria-labelledby="schedule-title">
       <div class="schedule-heading">
         <p class="eyebrow">Disponibilidad</p>
-        <h1 id="schedule-title">Agendar Nueva Cita</h1>
-        <p>Selecciona un dia disponible para consultar los horarios de los odontologos.</p>
+        <h1 id="schedule-title">Solicitar Nueva Cita</h1>
+        <p>Selecciona un dia y horario preferido. Recepcion revisara tu solicitud y confirmara la cita.</p>
       </div>
 
       <!-- El calendario y los horarios se generan desde agendar.js. -->
@@ -83,18 +83,18 @@
 
   <!-- RF3: boton flotante que se habilita al seleccionar un horario disponible. -->
   <button class="floating-confirm" id="confirm-slot" type="button" disabled>
-    Confirmar Cita
+    Enviar Solicitud
   </button>
 
   <!-- Toast de confirmacion de cita. -->
   <div class="toast" id="confirmation-toast" role="status" aria-live="polite" aria-atomic="true">
     <span class="toast__icon" aria-hidden="true">&#10003;</span>
     <div>
-      <strong>Cita confirmada</strong>
-      <p id="toast-message">Cita confirmada.</p>
+      <strong>Solicitud enviada</strong>
+      <p id="toast-message">Solicitud enviada.</p>
     </div>
   </div>
 
-  <script src="agendar.js"></script>
+  <script src="agendar.js?v=20260627-3"></script>
 </body>
 </html>

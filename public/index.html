@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Portal publico de pacientes de Odontologia Integral.">
-  <title>Portal de Pacientes | Odontologia Integral</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta name="description" content="Portal de acceso de Odontologia Integral.">
+  <title>Acceso | Odontologia Integral</title>
+  <link rel="stylesheet" href="styles.css?v=20260627-4">
 </head>
 <body>
   <main class="app-shell">
-    <!-- Pantalla inicial para que el paciente entre al portal. -->
+    <!-- Pantalla inicial para pacientes, recepcion, odontologos y administracion. -->
     <section class="login-view" id="login-view" aria-labelledby="login-title">
       <div class="brand-block">
         <span class="brand-mark" aria-hidden="true">OI</span>
         <div>
           <strong>Odontologia Integral</strong>
-          <span>Portal de Pacientes</span>
+          <span>Portal de Acceso</span>
         </div>
       </div>
 
@@ -23,7 +23,7 @@
         <div class="auth-card__header">
           <p class="eyebrow">Acceso privado</p>
           <h1 id="login-title">Iniciar sesion</h1>
-          <p>Consulta tus citas, expediente y seguimiento clinico desde un solo lugar.</p>
+          <p>Ingresa con tus credenciales de paciente o personal autorizado.</p>
         </div>
 
         <div class="form-row">
@@ -49,7 +49,7 @@
           <a href="#recuperar">Recuperar acceso</a>
         </div>
 
-        <button class="button button--primary" type="submit">Entrar al portal</button>
+        <button class="button button--primary" type="submit">Entrar</button>
         <p class="form-status" id="login-status" role="status" aria-live="polite"></p>
       </form>
 
@@ -74,7 +74,7 @@
       <div class="welcome-panel">
         <div>
           <p class="eyebrow">Bienvenida</p>
-          <h1 id="portal-title">Hola, Mariana</h1>
+          <h1 id="portal-title">Hola</h1>
           <p>Este es el resumen de tus proximas citas y expediente dental.</p>
         </div>
         <a class="button button--primary" href="agendar.html">Nueva cita</a>
@@ -85,23 +85,23 @@
         <article class="panel next-appointment">
           <div class="panel__header">
             <h2>Proxima cita</h2>
-            <span class="status-pill">Confirmada</span>
+            <span class="status-pill" id="next-appointment-status">Sin cita</span>
           </div>
           <div class="appointment-date">
-            <span>24</span>
+            <span id="next-appointment-day">--</span>
             <div>
-              <strong>Junio 2026</strong>
-              <small>10:30 AM</small>
+              <strong id="next-appointment-month">Sin cita programada</strong>
+              <small id="next-appointment-time">--:--</small>
             </div>
           </div>
           <dl class="detail-list">
             <div>
               <dt>Motivo</dt>
-              <dd>Limpieza dental</dd>
+              <dd id="next-appointment-treatment">Agenda una nueva cita para verla aqui.</dd>
             </div>
             <div>
               <dt>Doctor</dt>
-              <dd>Dra. Ana Torres</dd>
+              <dd id="next-appointment-doctor">Por asignar</dd>
             </div>
             <div>
               <dt>Consultorio</dt>
@@ -118,15 +118,15 @@
           <div class="record-summary">
             <div>
               <span>Grupo sanguineo</span>
-              <strong>O+</strong>
+              <strong id="record-blood-type">No registrado</strong>
             </div>
             <div>
               <span>Alergias</span>
-              <strong>Ninguna registrada</strong>
+              <strong id="record-allergies">No registradas</strong>
             </div>
             <div>
               <span>Ultima visita</span>
-              <strong>12 May 2026</strong>
+              <strong id="record-last-visit">Sin notas clinicas</strong>
             </div>
           </div>
         </article>
@@ -137,85 +137,10 @@
             <h2>Mis citas</h2>
             <span class="muted-label">Proximas</span>
           </div>
-          <div class="appointment-cards" id="appointment-list">
-            <article class="appointment-card" data-appointment-id="apt-001">
-              <div class="appointment-card__date">
-                <span>24</span>
-                <div>
-                  <strong>Junio 2026</strong>
-                  <small>10:30 AM</small>
-                </div>
-              </div>
-              <div class="appointment-card__body">
-                <div>
-                  <h3>Limpieza dental</h3>
-                  <span class="status-pill">Confirmada</span>
-                </div>
-                <p>Dra. Ana Torres &middot; Sucursal Centro</p>
-              </div>
-              <div class="appointment-card__actions">
-                <a class="button button--secondary" href="agendar.html">Reprogramar</a>
-                <button class="button button--danger" type="button" data-cancel-appointment>Cancelar Cita</button>
-              </div>
-            </article>
-
-            <article class="appointment-card" data-appointment-id="apt-002">
-              <div class="appointment-card__date">
-                <span>02</span>
-                <div>
-                  <strong>Julio 2026</strong>
-                  <small>04:00 PM</small>
-                </div>
-              </div>
-              <div class="appointment-card__body">
-                <div>
-                  <h3>Revision general</h3>
-                  <span class="status-pill">Confirmada</span>
-                </div>
-                <p>Dr. Luis Ramirez &middot; Sucursal Norte</p>
-              </div>
-              <div class="appointment-card__actions">
-                <a class="button button--secondary" href="agendar.html">Reprogramar</a>
-                <button class="button button--danger" type="button" data-cancel-appointment>Cancelar Cita</button>
-              </div>
-            </article>
-          </div>
-          <p class="empty-state is-hidden" id="appointments-empty">No tienes citas proximas registradas.</p>
+          <div class="appointment-cards" id="appointment-list"></div>
+          <p class="empty-state" id="appointments-empty">No tienes citas proximas registradas.</p>
         </article>
 
-        <!-- Solicitud rapida de cita desde el dashboard. -->
-        <article class="panel panel--wide" id="nueva-cita">
-          <div class="panel__header">
-            <h2>Solicitar nueva cita</h2>
-            <span class="muted-label">Solicitud</span>
-          </div>
-          <form class="request-form" id="appointment-request-form" novalidate>
-            <div class="form-grid">
-              <div class="form-row">
-                <label for="service">Servicio</label>
-                <select id="service" name="service" required>
-                  <option value="">Selecciona</option>
-                  <option>Consulta general</option>
-                  <option>Limpieza dental</option>
-                  <option>Dolor o urgencia</option>
-                  <option>Tratamiento restaurativo</option>
-                </select>
-                <small class="field-error" data-error-for="service"></small>
-              </div>
-              <div class="form-row">
-                <label for="date">Fecha preferida</label>
-                <input id="date" name="date" type="date" required>
-                <small class="field-error" data-error-for="date"></small>
-              </div>
-            </div>
-            <div class="form-row">
-              <label for="notes">Comentarios</label>
-              <textarea id="notes" name="notes" rows="3" placeholder="Describe brevemente el motivo"></textarea>
-            </div>
-            <button class="button button--primary" type="submit">Enviar solicitud</button>
-            <p class="form-status" id="request-status" role="status" aria-live="polite"></p>
-          </form>
-        </article>
       </div>
     </section>
   </main>
@@ -237,6 +162,6 @@
     </section>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20260627-4"></script>
 </body>
 </html>

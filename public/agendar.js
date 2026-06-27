@@ -8,9 +8,13 @@ const confirmSlotButton = document.querySelector("#confirm-slot");
 const scheduleStatus = document.querySelector("#schedule-status");
 const confirmationToast = document.querySelector("#confirmation-toast");
 const toastMessage = document.querySelector("#toast-message");
+const scheduleTitle = document.querySelector("#schedule-title");
 
 const availableTimes = ["09:00 AM", "10:30 AM", "12:00 PM", "04:00 PM", "05:30 PM"];
-const APPOINTMENT_ENDPOINT = "http://localhost:8080/api/citas";
+const API_BASE_URL = window.location.origin;
+const APPOINTMENT_ENDPOINT = `${API_BASE_URL}/api/citas`;
+const APPOINTMENT_REQUEST_ENDPOINT = `${API_BASE_URL}/api/solicitudes-cita`;
+const AVAILABILITY_ENDPOINT = `${API_BASE_URL}/api/citas/disponibilidad`;
 const monthNames = [
   "Enero",
   "Febrero",
@@ -31,27 +35,30 @@ today.setHours(0, 0, 0, 0);
 
 let selectedDayKey = "";
 let selectedTime = "";
+let selectedTimeValue = "";
 let selectedFormattedDate = "";
 let toastTimer = 0;
+const params = new URLSearchParams(window.location.search);
+const rescheduleAppointmentId = Number(params.get("reprogramar") || "0");
+const isRescheduleMode = rescheduleAppointmentId > 0;
+
+if (!getActivePatientId() || !localStorage.getItem("authToken")) {
+  window.location.href = "index.html";
+}
+
+if (isRescheduleMode) {
+  scheduleTitle.textContent = "Reprogramar Cita";
+  confirmSlotButton.textContent = "Confirmar Reprogramacion";
+  summaryStatus.textContent = "Reprogramacion";
+}
 
 function getActivePatientId() {
-  return Number(localStorage.getItem("pacienteId") || "1");
+  return Number(localStorage.getItem("pacienteId") || "0");
 }
 
 // Convierte una fecha a formato YYYY-MM-DD para enviarla al backend.
 function getDateKey(date) {
   return date.toISOString().split("T")[0];
-}
-
-// Simula horarios ocupados segun el dia seleccionado.
-function getBusySlots(day) {
-  const occupiedByDay = {
-    2: ["10:30 AM", "04:00 PM"],
-    4: ["09:00 AM", "12:00 PM"],
-    5: ["05:30 PM"]
-  };
-
-  return occupiedByDay[day % 6] || [];
 }
 
 // Define si un dia se puede seleccionar.
@@ -116,6 +123,7 @@ function renderCalendar() {
 function selectDay(date, dayButton) {
   selectedDayKey = getDateKey(date);
   selectedTime = "";
+  selectedTimeValue = "";
   selectedFormattedDate = formatDate(date);
 
   document.querySelectorAll(".calendar-day.is-selected").forEach((button) => {
@@ -133,21 +141,76 @@ function selectDay(date, dayButton) {
   renderTimeSlots(date);
 }
 
-// Crea los chips de horarios y deshabilita los ocupados.
-function renderTimeSlots(date) {
-  const busySlots = getBusySlots(date.getDate());
+// Crea los chips de horarios usando disponibilidad real desde MariaDB.
+async function renderTimeSlots(date) {
   timeSlots.innerHTML = `
     <div class="time-slots__header">
       <strong>Horarios disponibles</strong>
       <span>${formatDate(date)}</span>
     </div>
+    <p class="form-status">Consultando disponibilidad...</p>
   `;
 
+  try {
+    const availability = await loadAvailability(getDateKey(date));
+    renderAvailabilityChips(availability);
+  } catch (error) {
+    timeSlots.innerHTML += `<p class="form-status is-error">No fue posible cargar disponibilidad real.</p>`;
+  }
+}
+
+async function loadAvailability(dateKey) {
+  const url = new URL(AVAILABILITY_ENDPOINT);
+  url.searchParams.set("fecha", dateKey);
+  if (isRescheduleMode) {
+    url.searchParams.set("excluirCitaId", String(rescheduleAppointmentId));
+  }
+
+  const token = localStorage.getItem("authToken");
+  const response = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(data.error || data.mensaje || "No fue posible consultar disponibilidad.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+function renderAvailabilityChips(availability) {
+  timeSlots.querySelector(".form-status")?.remove();
+  const slots = availability.horarios || [];
   const chipList = document.createElement("div");
   chipList.className = "chip-list";
 
-  availableTimes.forEach((time) => {
-    const isBusy = busySlots.includes(time);
+  if (availability.cerrado) {
+    const closedMessage = document.createElement("p");
+    closedMessage.className = "form-status";
+    closedMessage.textContent = availability.motivo
+      ? `Consultorio cerrado: ${availability.motivo}.`
+      : "Consultorio cerrado en esta fecha.";
+    timeSlots.append(closedMessage);
+    return;
+  }
+
+  if (!slots.length) {
+    const emptyMessage = document.createElement("p");
+    emptyMessage.className = "form-status";
+    emptyMessage.textContent = "No hay horarios de atencion configurados para este dia.";
+    timeSlots.append(emptyMessage);
+    return;
+  }
+
+  slots.forEach((slot) => {
+    const time = slot.hora;
+    const timeValue = slot.valor || timeToTwentyFourHourValue(time);
+    const isBusy = !slot.disponible;
     const chip = document.createElement("button");
 
     chip.type = "button";
@@ -160,7 +223,7 @@ function renderTimeSlots(date) {
       chip.setAttribute("aria-label", `${time} ocupado`);
     } else {
       chip.setAttribute("aria-label", `${time} disponible`);
-      chip.addEventListener("click", () => selectTime(chip, time));
+      chip.addEventListener("click", () => selectTime(chip, time, timeValue));
     }
 
     chipList.append(chip);
@@ -170,8 +233,9 @@ function renderTimeSlots(date) {
 }
 
 // Guarda el horario seleccionado y habilita el boton flotante.
-function selectTime(chip, time) {
+function selectTime(chip, time, timeValue) {
   selectedTime = time;
+  selectedTimeValue = timeValue;
 
   document.querySelectorAll(".time-chip.is-selected").forEach((button) => {
     button.classList.remove("is-selected");
@@ -210,16 +274,20 @@ function timeToTwentyFourHourValue(time) {
 function buildAppointmentPayload() {
   return {
     pacienteId: getActivePatientId(),
-    fechaHora: `${selectedDayKey}T${timeToTwentyFourHourValue(selectedTime)}`,
+    fechaHora: `${selectedDayKey}T${selectedTimeValue || timeToTwentyFourHourValue(selectedTime)}`,
     motivo: "Cita agendada desde Portal Publico"
   };
 }
 
 async function saveAppointment(payload) {
-  const response = await fetch(APPOINTMENT_ENDPOINT, {
-    method: "POST",
+  const url = isRescheduleMode
+    ? `${APPOINTMENT_ENDPOINT}/${rescheduleAppointmentId}/reprogramar`
+    : APPOINTMENT_REQUEST_ENDPOINT;
+  const response = await fetch(url, {
+    method: isRescheduleMode ? "PUT" : "POST",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...(localStorage.getItem("authToken") ? { Authorization: `Bearer ${localStorage.getItem("authToken")}` } : {})
     },
     body: JSON.stringify(payload)
   });
@@ -238,20 +306,28 @@ async function saveAppointment(payload) {
 // RF3: confirma la cita contra la API y muestra el toast.
 confirmSlotButton.addEventListener("click", async () => {
   if (!selectedDayKey || !selectedTime) return;
+  if (!getActivePatientId()) {
+    alert("Inicia sesion nuevamente para agendar.");
+    window.location.href = "index.html";
+    return;
+  }
 
   const appointmentPayload = buildAppointmentPayload();
-  const confirmationMessage = `Cita confirmada para el ${selectedFormattedDate} a las ${selectedTime}.`;
+  const confirmationMessage = isRescheduleMode
+    ? `Cita reprogramada para el ${selectedFormattedDate} a las ${selectedTime}.`
+    : `Solicitud enviada para el ${selectedFormattedDate} a las ${selectedTime}. Recepcion confirmara la cita.`;
 
   confirmSlotButton.disabled = true;
-  scheduleStatus.textContent = "Confirmando cita...";
+  scheduleStatus.textContent = isRescheduleMode ? "Confirmando cambio..." : "Enviando solicitud...";
 
   try {
     await saveAppointment(appointmentPayload);
     scheduleStatus.textContent = confirmationMessage;
     showConfirmationToast(confirmationMessage);
+    await renderTimeSlots(new Date(`${selectedDayKey}T00:00:00`));
   } catch (error) {
     scheduleStatus.textContent = error.status === 409
-      ? "Ese horario ya fue ocupado. Selecciona otro horario."
+      ? error.message || "Ese horario ya fue ocupado. Selecciona otro horario."
       : error.message || "No fue posible confirmar la cita.";
     alert(scheduleStatus.textContent);
     confirmSlotButton.disabled = false;

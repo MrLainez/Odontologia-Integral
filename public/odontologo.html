@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Modulo odontologico de expediente clinico.">
+  <title>Expediente Clinico | Odontologia Integral</title>
+  <link rel="stylesheet" href="styles.css?v=20260627-4">
+</head>
+<body>
+  <main class="dentist-shell">
+    <!-- Barra superior para busqueda rapida de pacientes. -->
+    <header class="dentist-topbar">
+      <a class="brand-block brand-block--compact" href="odontologo.html" aria-label="Modulo odontologico">
+        <span class="brand-mark" aria-hidden="true">OI</span>
+        <div>
+          <strong>Odontologia Integral</strong>
+          <span>Expediente Clinico</span>
+        </div>
+      </a>
+
+      <div class="patient-search">
+        <label for="patient-search">Buscar paciente</label>
+        <input id="patient-search" type="search" placeholder="Nombre, correo o ID">
+        <div class="patient-results is-hidden" id="patient-results" aria-live="polite"></div>
+      </div>
+
+      <button class="button button--secondary" id="admin-logout" type="button">Salir</button>
+    </header>
+
+    <section class="patient-summary" aria-label="Datos clinicos basicos">
+      <div>
+        <p class="eyebrow">Paciente activo</p>
+        <h1 id="patient-name">Ningun paciente seleccionado</h1>
+      </div>
+      <dl class="clinical-data">
+        <div>
+          <dt>Edad</dt>
+          <dd id="patient-age">No registrado</dd>
+        </div>
+        <div>
+          <dt>Alergias</dt>
+          <dd id="patient-allergies">No registrado</dd>
+        </div>
+        <div>
+          <dt>Ultima consulta</dt>
+          <dd id="patient-last-visit">Sin consultas</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section class="dentist-workspace">
+      <!-- RF9: odontograma interactivo para 32 piezas adultas. -->
+      <article class="clinical-panel odontogram-panel" aria-labelledby="odontogram-title">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">RF9</p>
+            <h2 id="odontogram-title">Odontograma</h2>
+          </div>
+          <div class="tooth-legend" aria-label="Leyenda de estados">
+            <span><i class="tooth-state-dot tooth-state-healthy"></i>Sano</span>
+            <span><i class="tooth-state-dot tooth-state-caries"></i>Caries</span>
+            <span><i class="tooth-state-dot tooth-state-filling"></i>Obturacion</span>
+            <span><i class="tooth-state-dot tooth-state-extraction"></i>Extraccion</span>
+          </div>
+        </div>
+
+        <div class="odontogram-grid" id="odontogram-grid" aria-label="Piezas dentales adultas"></div>
+      </article>
+
+      <!-- RF10: notas de evolucion con registro inmutable simulado. -->
+      <aside class="clinical-panel history-panel" aria-labelledby="history-title">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">RF10</p>
+            <h2 id="history-title">Historial</h2>
+          </div>
+          <span class="muted-label">Evolucion</span>
+        </div>
+
+        <form class="clinical-file-form" id="clinical-file-form" novalidate>
+          <div class="form-row">
+            <label for="clinical-age">Edad</label>
+            <input id="clinical-age" name="edad" type="number" min="0" max="120" placeholder="No registrada">
+          </div>
+
+          <div class="form-row">
+            <label for="clinical-allergies">Alergias</label>
+            <input id="clinical-allergies" name="alergias" type="text" placeholder="Sin alergias registradas">
+          </div>
+
+          <div class="form-row">
+            <label for="clinical-background">Antecedentes</label>
+            <textarea id="clinical-background" name="antecedentes" rows="3" placeholder="Antecedentes clinicos relevantes"></textarea>
+          </div>
+
+          <button class="button button--secondary" type="submit">Guardar Expediente</button>
+        </form>
+
+        <div class="form-row">
+          <label for="evolution-note">Nota de evolucion</label>
+          <textarea id="evolution-note" rows="5" placeholder="Describe hallazgos, procedimiento o indicaciones"></textarea>
+        </div>
+
+        <button class="button button--primary" id="add-note" type="button">Agregar Nota</button>
+        <p class="form-status" id="note-status" role="status" aria-live="polite"></p>
+
+        <div class="note-list" id="note-list" aria-label="Notas registradas">
+          <article class="note-item">
+            <time>18/06/2026 09:15</time>
+            <p>Paciente refiere sensibilidad leve en molar superior derecho. Se indica vigilancia.</p>
+          </article>
+        </div>
+      </aside>
+    </section>
+  </main>
+
+  <div class="tooth-menu is-hidden" id="tooth-menu" role="dialog" aria-modal="false" aria-label="Seleccionar estado dental">
+    <strong id="tooth-menu-title">Pieza dental</strong>
+    <button type="button" data-tooth-status="healthy">Sano</button>
+    <button type="button" data-tooth-status="caries">Caries</button>
+    <button type="button" data-tooth-status="filling">Obturacion</button>
+    <button type="button" data-tooth-status="extraction">Extraccion</button>
+  </div>
+
+  <script src="odontologo.js?v=20260627-5"></script>
+</body>
+</html>

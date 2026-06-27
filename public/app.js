@@ -2,9 +2,7 @@ const loginView = document.querySelector("#login-view");
 const portalView = document.querySelector("#portal-view");
 const loginForm = document.querySelector("#login-form");
 const registerForm = document.querySelector("#register-form");
-const requestForm = document.querySelector("#appointment-request-form");
 const loginStatus = document.querySelector("#login-status");
-const requestStatus = document.querySelector("#request-status");
 const logoutButton = document.querySelector("#logout-button");
 const passwordInput = document.querySelector("#password");
 const togglePasswordButton = document.querySelector("#toggle-password");
@@ -12,29 +10,42 @@ const appointmentList = document.querySelector("#appointment-list");
 const appointmentsEmpty = document.querySelector("#appointments-empty");
 const cancelDialog = document.querySelector("#cancel-dialog");
 const confirmCancelButton = document.querySelector("#confirm-cancel-button");
+const nextAppointmentStatus = document.querySelector("#next-appointment-status");
+const nextAppointmentDay = document.querySelector("#next-appointment-day");
+const nextAppointmentMonth = document.querySelector("#next-appointment-month");
+const nextAppointmentTime = document.querySelector("#next-appointment-time");
+const nextAppointmentTreatment = document.querySelector("#next-appointment-treatment");
+const nextAppointmentDoctor = document.querySelector("#next-appointment-doctor");
+const recordBloodType = document.querySelector("#record-blood-type");
+const recordAllergies = document.querySelector("#record-allergies");
+const recordLastVisit = document.querySelector("#record-last-visit");
 
-const API_BASE_URL = "http://localhost:8080";
+const API_BASE_URL = window.location.origin;
+const urlParams = new URLSearchParams(window.location.search);
 const REGISTER_ENDPOINT = `${API_BASE_URL}/api/pacientes`;
 const AUTH_ENDPOINT = `${API_BASE_URL}/api/login`;
+const ADMIN_AUTH_ENDPOINT = `${API_BASE_URL}/api/admin/login`;
 const APPOINTMENT_ENDPOINT = `${API_BASE_URL}/api/citas`;
+const PATIENT_APPOINTMENTS_ENDPOINT = (patientId) => `${API_BASE_URL}/api/pacientes/${patientId}/citas`;
+const PATIENT_RECORD_ENDPOINT = (patientId) => `${API_BASE_URL}/api/pacientes/${patientId}/expediente`;
+const CANCEL_APPOINTMENT_ENDPOINT = (patientId, appointmentId) => (
+  `${API_BASE_URL}/api/pacientes/${patientId}/citas/${appointmentId}/cancelar`
+);
 
 let selectedAppointmentCard = null;
 
 // Fecha base para evitar solicitudes en dias pasados.
 const today = new Date();
 today.setHours(0, 0, 0, 0);
-document.querySelector("#date").min = today.toISOString().split("T")[0];
+const quickRequestDate = document.querySelector("#date");
+if (quickRequestDate) {
+  quickRequestDate.min = today.toISOString().split("T")[0];
+}
 
 // Validaciones simples del formulario de login y solicitud.
 const validators = {
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Escribe un correo valido.",
-  password: (value) => value.trim().length >= 6 || "La contrasena debe tener al menos 6 caracteres.",
-  service: (value) => value !== "" || "Selecciona un servicio.",
-  date: (value) => {
-    if (!value) return "Selecciona una fecha.";
-    const selectedDate = new Date(`${value}T00:00:00`);
-    return selectedDate >= today || "Selecciona una fecha futura.";
-  }
+  password: (value) => value.trim().length >= 6 || "La contrasena debe tener al menos 6 caracteres."
 };
 
 function showFieldError(field, message) {
@@ -73,7 +84,9 @@ function showLogin() {
   portalView.classList.add("is-hidden");
   loginView.classList.remove("is-hidden");
   loginForm.reset();
-  loginStatus.textContent = "";
+  loginStatus.textContent = urlParams.get("acceso") === "odontologo"
+    ? "Ingresa con una cuenta de odontologo o administrador."
+    : "";
 }
 
 // Abre el modal de cancelacion para la tarjeta seleccionada.
@@ -98,12 +111,32 @@ function updateAppointmentsEmptyState() {
 }
 
 async function postJson(url, payload) {
-  const response = await fetch(url, {
+  return requestJson(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
     body: JSON.stringify(payload)
+  });
+}
+
+async function putJson(url, payload = {}) {
+  return requestJson(url, {
+    method: "PUT",
+    body: JSON.stringify(payload)
+  });
+}
+
+async function getJson(url) {
+  return requestJson(url);
+}
+
+async function requestJson(url, options = {}) {
+  const token = localStorage.getItem("authToken");
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {})
+    }
   });
   const data = await response.json().catch(() => ({}));
 
@@ -117,6 +150,50 @@ async function postJson(url, payload) {
   return data;
 }
 
+function getActivePatientId() {
+  return Number(localStorage.getItem("pacienteId") || "0");
+}
+
+function formatDateParts(dateValue) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  const monthYear = date.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+
+  return {
+    day: date.toLocaleDateString("es-MX", { day: "2-digit" }),
+    monthYear: monthYear.charAt(0).toUpperCase() + monthYear.slice(1)
+  };
+}
+
+function formatTime(timeValue) {
+  const [hours = "00", minutes = "00"] = String(timeValue).split(":");
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+
+  return date.toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatShortDate(dateTimeValue) {
+  if (!dateTimeValue) return "Sin notas clinicas";
+
+  return new Date(dateTimeValue).toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 async function registerPatient(payload) {
   return postJson(REGISTER_ENDPOINT, payload);
 }
@@ -125,8 +202,144 @@ async function login(payload) {
   return postJson(AUTH_ENDPOINT, payload);
 }
 
+async function loginAdmin(payload) {
+  return postJson(ADMIN_AUTH_ENDPOINT, payload);
+}
+
 async function createAppointment(payload) {
   return postJson(APPOINTMENT_ENDPOINT, payload);
+}
+
+async function loadPatientAppointments() {
+  const patientId = getActivePatientId();
+
+  if (!patientId) {
+    appointmentList.innerHTML = "";
+    updateNextAppointment(null);
+    updateAppointmentsEmptyState();
+    return;
+  }
+
+  const appointments = await getJson(PATIENT_APPOINTMENTS_ENDPOINT(patientId));
+  appointmentList.innerHTML = "";
+  appointmentsEmpty.textContent = "No tienes citas proximas registradas.";
+  appointments.forEach((appointment) => {
+    appointmentList.appendChild(createAppointmentCard(appointment));
+  });
+
+  updateNextAppointment(appointments[0] || null);
+  updateAppointmentsEmptyState();
+}
+
+async function loadPatientRecord() {
+  const patientId = getActivePatientId();
+  if (!patientId) return;
+
+  try {
+    const record = await getJson(PATIENT_RECORD_ENDPOINT(patientId));
+    const patientName = record.paciente?.nombre || localStorage.getItem("pacienteNombre") || "";
+    const allergies = record.expediente?.alergias || "No registradas";
+    const lastNote = record.notasEvolucion?.[0]?.fechaHora || null;
+
+    if (patientName) {
+      localStorage.setItem("pacienteNombre", patientName);
+      document.querySelector("#portal-title").textContent = `Hola, ${patientName}`;
+    }
+
+    recordBloodType.textContent = "No registrado";
+    recordAllergies.textContent = allergies;
+    recordLastVisit.textContent = formatShortDate(lastNote);
+  } catch (error) {
+    recordAllergies.textContent = "No disponible";
+    recordLastVisit.textContent = "No disponible";
+  }
+}
+
+async function loadPatientDashboard() {
+  const patientName = localStorage.getItem("pacienteNombre");
+
+  if (patientName) {
+    document.querySelector("#portal-title").textContent = `Hola, ${patientName}`;
+  }
+
+  try {
+    await Promise.all([
+      loadPatientAppointments(),
+      loadPatientRecord()
+    ]);
+  } catch (error) {
+    appointmentList.innerHTML = "";
+    appointmentsEmpty.textContent = "No fue posible cargar tus citas. Revisa que el servidor este activo.";
+    updateNextAppointment(null);
+    updateAppointmentsEmptyState();
+  }
+}
+
+function createAppointmentCard(appointment) {
+  const dateParts = formatDateParts(appointment.fecha);
+  const card = document.createElement("article");
+  card.className = "appointment-card";
+  card.dataset.appointmentId = appointment.id;
+
+  card.innerHTML = `
+    <div class="appointment-card__date">
+      <span>${dateParts.day}</span>
+      <div>
+        <strong>${dateParts.monthYear}</strong>
+        <small>${formatTime(appointment.hora)}</small>
+      </div>
+    </div>
+    <div class="appointment-card__body">
+      <div>
+        <h3>${escapeHtml(appointment.tratamiento || "Consulta dental")}</h3>
+        <span class="status-pill">${escapeHtml(appointment.estatus || "CONFIRMADA")}</span>
+      </div>
+      <p>${escapeHtml(appointment.odontologoNombre || "Por asignar")} &middot; Sucursal Centro</p>
+    </div>
+    <div class="appointment-card__actions">
+      <a class="button button--secondary" href="agendar.html?reprogramar=${encodeURIComponent(appointment.id)}">Reprogramar</a>
+      <button class="button button--danger" type="button" data-cancel-appointment>Cancelar Cita</button>
+    </div>
+  `;
+
+  return card;
+}
+
+function updateNextAppointment(appointment) {
+  if (!appointment) {
+    nextAppointmentStatus.textContent = "Sin cita";
+    nextAppointmentDay.textContent = "--";
+    nextAppointmentMonth.textContent = "Sin cita programada";
+    nextAppointmentTime.textContent = "--:--";
+    nextAppointmentTreatment.textContent = "Agenda una nueva cita para verla aqui.";
+    nextAppointmentDoctor.textContent = "Por asignar";
+    return;
+  }
+
+  const dateParts = formatDateParts(appointment.fecha);
+  nextAppointmentStatus.textContent = appointment.estatus || "CONFIRMADA";
+  nextAppointmentDay.textContent = dateParts.day;
+  nextAppointmentMonth.textContent = dateParts.monthYear;
+  nextAppointmentTime.textContent = formatTime(appointment.hora);
+  nextAppointmentTreatment.textContent = appointment.tratamiento || "Consulta dental";
+  nextAppointmentDoctor.textContent = appointment.odontologoNombre || "Por asignar";
+}
+
+function getAdminRedirect(role) {
+  if (role === "ODONTOLOGO") return "odontologo.html";
+  return "recepcion.html";
+}
+
+function saveAdminSession(response) {
+  const user = response.usuario;
+
+  localStorage.setItem("adminSession", JSON.stringify({
+    id: user.id,
+    nombre: user.nombre,
+    email: user.email,
+    rol: user.rol
+  }));
+  localStorage.setItem("authToken", response.token);
 }
 
 function saveActivePatient(response) {
@@ -140,6 +353,12 @@ function saveActivePatient(response) {
   if (patient?.nombre) {
     localStorage.setItem("pacienteNombre", patient.nombre);
   }
+
+  if (response.token) {
+    localStorage.setItem("authToken", response.token);
+  }
+
+  return patientId;
 }
 
 if (registerForm) {
@@ -157,8 +376,11 @@ if (registerForm) {
     try {
       const response = await registerPatient(payload);
       saveActivePatient(response);
+      localStorage.setItem("pacienteNombre", payload.nombre);
       alert("Paciente registrado correctamente.");
       registerForm.reset();
+      showPortal();
+      loadPatientDashboard();
     } catch (error) {
       alert(error.message || "No fue posible registrar el paciente.");
     }
@@ -167,12 +389,6 @@ if (registerForm) {
 
 loginForm.addEventListener("input", (event) => {
   if (event.target.matches("input")) {
-    validateField(event.target);
-  }
-});
-
-requestForm.addEventListener("input", (event) => {
-  if (event.target.matches("input, select, textarea")) {
     validateField(event.target);
   }
 });
@@ -206,51 +422,43 @@ loginForm.addEventListener("submit", async (event) => {
   submitButton.textContent = "Validando...";
 
   try {
-    const response = await login(payload);
-    saveActivePatient(response);
-    showPortal();
-  } catch (error) {
-    loginStatus.textContent = error.message || "No fue posible iniciar sesion.";
-    loginStatus.classList.add("is-error");
+    const adminResponse = await loginAdmin(payload);
+    saveAdminSession(adminResponse);
+    window.location.href = getAdminRedirect(adminResponse.usuario.rol);
+  } catch (adminError) {
+    if (adminError.status !== 401) {
+      loginStatus.textContent = "No fue posible conectar con el servidor. Revisa la direccion/IP del sistema.";
+      loginStatus.classList.add("is-error");
+      submitButton.disabled = false;
+      submitButton.textContent = "Entrar";
+      return;
+    }
+
+    try {
+      const patientResponse = await login(payload);
+      localStorage.removeItem("adminSession");
+      saveActivePatient(patientResponse);
+      showPortal();
+      loadPatientDashboard();
+    } catch (patientError) {
+      loginStatus.textContent = patientError.status === 401
+        ? "Credenciales invalidas."
+        : "No fue posible conectar con el servidor. Revisa la direccion/IP del sistema.";
+      loginStatus.classList.add("is-error");
+    }
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = "Entrar al portal";
+    submitButton.textContent = "Entrar";
   }
 });
 
-// Solicitud rapida de cita desde el dashboard.
-requestForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  requestStatus.classList.remove("is-error");
-  requestStatus.textContent = "";
-
-  if (!validateForm(requestForm)) {
-    requestStatus.textContent = "Completa los campos marcados.";
-    requestStatus.classList.add("is-error");
-    return;
-  }
-
-  const data = new FormData(requestForm);
-  const patientId = Number(localStorage.getItem("pacienteId") || "1");
-  const payload = {
-    pacienteId: patientId,
-    fechaHora: `${data.get("date")}T09:00`,
-    motivo: `${data.get("service")}${data.get("notes").trim() ? ` - ${data.get("notes").trim()}` : ""}`
-  };
-
-  try {
-    await createAppointment(payload);
-    requestStatus.textContent = "Cita registrada correctamente.";
-    requestForm.reset();
-  } catch (error) {
-    requestStatus.classList.add("is-error");
-    requestStatus.textContent = error.status === 409
-      ? "Ese horario ya fue ocupado. Selecciona otro horario."
-      : error.message || "No fue posible registrar la cita.";
-  }
+logoutButton.addEventListener("click", () => {
+  localStorage.removeItem("pacienteId");
+  localStorage.removeItem("pacienteNombre");
+  localStorage.removeItem("authToken");
+  appointmentList.innerHTML = "";
+  showLogin();
 });
-
-logoutButton.addEventListener("click", showLogin);
 
 // RF4: abre la alerta al presionar "Cancelar Cita".
 appointmentList.addEventListener("click", (event) => {
@@ -273,16 +481,40 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Al confirmar, se oculta la tarjeta de la lista.
-confirmCancelButton.addEventListener("click", () => {
+// Al confirmar, la cancelacion se guarda en MariaDB y despues se actualiza la lista.
+confirmCancelButton.addEventListener("click", async () => {
   if (!selectedAppointmentCard) return;
 
   const cardToRemove = selectedAppointmentCard;
-  cardToRemove.classList.add("is-removing");
+  const patientId = getActivePatientId();
+  const appointmentId = Number(cardToRemove.dataset.appointmentId);
 
-  window.setTimeout(() => {
-    cardToRemove.remove();
-    closeCancelDialog();
-    updateAppointmentsEmptyState();
-  }, 180);
+  confirmCancelButton.disabled = true;
+  confirmCancelButton.textContent = "Cancelando...";
+
+  try {
+    await putJson(CANCEL_APPOINTMENT_ENDPOINT(patientId, appointmentId));
+    cardToRemove.classList.add("is-removing");
+
+    window.setTimeout(() => {
+      cardToRemove.remove();
+      closeCancelDialog();
+      updateAppointmentsEmptyState();
+      loadPatientAppointments();
+    }, 180);
+  } catch (error) {
+    alert(error.status === 409
+      ? "La cita solo puede cancelarse con al menos 24 horas de anticipacion."
+      : error.message || "No fue posible cancelar la cita.");
+  } finally {
+    confirmCancelButton.disabled = false;
+    confirmCancelButton.textContent = "Si, cancelar";
+  }
 });
+
+if (getActivePatientId()) {
+  showPortal();
+  loadPatientDashboard();
+} else if (urlParams.get("acceso") === "odontologo") {
+  loginStatus.textContent = "Ingresa con una cuenta de odontologo o administrador.";
+}
