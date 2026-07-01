@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Panel administrativo para recepcion de Odontologia Integral.">
   <title>Recepcion | Odontologia Integral</title>
-  <link rel="stylesheet" href="styles.css?v=20260627-4">
+  <link rel="stylesheet" href="styles.css?v=20260627-7">
 </head>
 <body>
   <main class="reception-shell">
@@ -162,7 +162,7 @@
           <form class="inline-form admin-user-form" id="admin-user-form" novalidate>
             <input id="admin-user-name" name="nombre" type="text" placeholder="Nombre completo" required>
             <input id="admin-user-email" name="email" type="email" placeholder="correo@odonto.local" required>
-            <input id="admin-user-password" name="password" type="password" placeholder="Contrasena temporal" required>
+            <input id="admin-user-password" name="password" type="password" placeholder="Contraseña temporal" required>
             <select id="admin-user-role" name="rol" required>
               <option value="">Rol</option>
               <option value="ADMIN">Administrador</option>
@@ -191,6 +191,27 @@
             <button class="button button--primary" type="submit">Guardar horarios</button>
           </form>
           <p class="form-status" id="business-hours-status" role="status" aria-live="polite"></p>
+
+          <div class="dentist-hours-block">
+            <div class="panel__header">
+              <div>
+                <h3>Horarios por odontólogo</h3>
+                <span class="muted-label">Disponibilidad individual</span>
+              </div>
+            </div>
+
+            <form class="business-hours-form" id="dentist-hours-form" novalidate>
+              <div class="form-row">
+                <label for="dentist-hours-dentist">Odontólogo</label>
+                <select id="dentist-hours-dentist" required>
+                  <option value="">Selecciona odontólogo</option>
+                </select>
+              </div>
+              <div class="business-hours-list" id="dentist-hours-list"></div>
+              <button class="button button--primary" type="submit">Guardar horario del odontólogo</button>
+            </form>
+            <p class="form-status" id="dentist-hours-status" role="status" aria-live="polite"></p>
+          </div>
 
           <div class="holiday-block">
             <div class="panel__header">
@@ -277,6 +298,15 @@
         </div>
 
         <div class="form-row">
+          <label for="manual-dentist">Odontólogo</label>
+          <select id="manual-dentist" name="odontologoId" required>
+            <option value="">Selecciona odontólogo</option>
+          </select>
+          <small class="field-error" data-error-for="manual-dentist"></small>
+          <p class="availability-status" id="manual-availability-status">Selecciona fecha y odontologo.</p>
+        </div>
+
+        <div class="form-row">
           <label for="inputMotivo">Motivo</label>
           <input id="inputMotivo" name="reason" type="text" placeholder="Ej. Consulta presencial" required>
           <small class="field-error" data-error-for="inputMotivo"></small>
@@ -320,7 +350,7 @@
         </div>
 
         <div class="form-row">
-          <label for="user-password">Contrasena temporal</label>
+          <label for="user-password">Contraseña temporal</label>
           <input id="user-password" name="password" type="password" placeholder="Minimo 6 caracteres" required>
           <small class="field-error" data-error-for="user-password"></small>
         </div>
@@ -331,6 +361,6 @@
     </section>
   </div>
 
-  <script src="recepcion.js?v=20260627-3"></script>
+  <script src="recepcion.js?v=20260630-4"></script>
 </body>
 </html>

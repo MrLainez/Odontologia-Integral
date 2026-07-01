@@ -14,8 +14,13 @@ const adminLogoutButton = document.querySelector("#admin-logout");
 const patientResults = document.querySelector("#patient-results");
 const clinicalFileForm = document.querySelector("#clinical-file-form");
 const clinicalAgeInput = document.querySelector("#clinical-age");
+const clinicalBloodTypeInput = document.querySelector("#clinical-blood-type");
 const clinicalAllergiesInput = document.querySelector("#clinical-allergies");
 const clinicalBackgroundInput = document.querySelector("#clinical-background");
+const clinicalImageForm = document.querySelector("#clinical-image-form");
+const clinicalImageFileInput = document.querySelector("#clinical-image-file");
+const imageStatus = document.querySelector("#image-status");
+const clinicalImageList = document.querySelector("#clinical-image-list");
 
 // Ruta base de la API local en Kotlin/Javalin.
 const API_BASE_URL = window.location.origin;
@@ -119,6 +124,26 @@ async function fetchJson(url, options = {}) {
 
   if (!response.ok) {
     const error = new Error(data.error || data.mensaje || "No fue posible completar la solicitud.");
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
+async function fetchFormData(url, formData) {
+  const token = localStorage.getItem("authToken");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: formData
+  });
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(data.error || data.mensaje || "No fue posible subir el archivo.");
     error.status = response.status;
     throw error;
   }
@@ -242,6 +267,43 @@ function renderNotes(notes) {
   });
 }
 
+function renderClinicalImages(images) {
+  clinicalImageList.innerHTML = "";
+
+  if (!images.length) {
+    const emptyItem = document.createElement("article");
+    emptyItem.className = "clinical-image-item";
+    emptyItem.innerHTML = "<p>Sin radiografias o imagenes registradas.</p>";
+    clinicalImageList.append(emptyItem);
+    return;
+  }
+
+  images.forEach((image) => {
+    clinicalImageList.append(createClinicalImageItem(image));
+  });
+}
+
+function createClinicalImageItem(image) {
+  const item = document.createElement("article");
+  const isImage = String(image.contentType || "").startsWith("image/");
+
+  item.className = "clinical-image-item";
+  item.innerHTML = `
+    <a class="clinical-image-preview" href="${escapeHtml(image.url)}" target="_blank" rel="noopener">
+      ${isImage
+        ? `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.descripcion || image.nombreOriginal || "Imagen clinica")}">`
+        : `<span>PDF</span>`}
+    </a>
+    <div>
+      <strong>${escapeHtml(image.tipo || "IMAGEN")}</strong>
+      <p>${escapeHtml(image.descripcion || image.nombreOriginal || "Archivo clinico")}</p>
+      <small>${formatTimestamp(image.fechaSubida)} · ${escapeHtml(image.nombreOriginal || "")}</small>
+    </div>
+  `;
+
+  return item;
+}
+
 // Llena la cabecera clinica del paciente activo.
 function fillPatientHeader(expediente) {
   const paciente = expediente.paciente || {};
@@ -249,10 +311,11 @@ function fillPatientHeader(expediente) {
   const notes = expediente.notasEvolucion || [];
 
   patientName.textContent = paciente.nombre || "Paciente sin nombre";
-  patientAge.textContent = clinicalFile.edad ? `${clinicalFile.edad} anos` : "No registrado";
+  patientAge.textContent = clinicalFile.edad ? `${clinicalFile.edad} años` : "No registrado";
   patientAllergies.textContent = clinicalFile.alergias || "Sin alergias registradas";
   patientLastVisit.textContent = notes[0]?.fechaHora ? formatTimestamp(notes[0].fechaHora) : "Sin consultas";
   clinicalAgeInput.value = clinicalFile.edad || "";
+  clinicalBloodTypeInput.value = clinicalFile.grupoSanguineo || "";
   clinicalAllergiesInput.value = clinicalFile.alergias || "";
   clinicalBackgroundInput.value = clinicalFile.antecedentes || "";
 }
@@ -270,10 +333,48 @@ async function loadPatientRecord(patientId) {
     fillPatientHeader(expediente);
     paintOdontogram(expediente.odontograma || []);
     renderNotes(expediente.notasEvolucion || []);
+    renderClinicalImages(expediente.imagenesClinicas || []);
     noteStatus.textContent = "Expediente cargado correctamente.";
+    imageStatus.textContent = "";
   } catch (error) {
     noteStatus.textContent = error.message || "No fue posible cargar el expediente.";
     noteStatus.classList.add("is-error");
+  }
+}
+
+async function uploadClinicalImage(event) {
+  event.preventDefault();
+
+  if (!activePatientId) {
+    imageStatus.textContent = "Selecciona un paciente antes de subir imagenes.";
+    imageStatus.classList.add("is-error");
+    return;
+  }
+
+  if (!clinicalImageFileInput.files.length) {
+    imageStatus.textContent = "Selecciona un archivo JPG, PNG, WebP o PDF.";
+    imageStatus.classList.add("is-error");
+    return;
+  }
+
+  imageStatus.classList.remove("is-error");
+  imageStatus.textContent = "Subiendo archivo...";
+
+  try {
+    const formData = new FormData(clinicalImageForm);
+    const response = await fetchFormData(`${API_BASE_URL}/api/pacientes/${activePatientId}/imagenes`, formData);
+    const emptyItem = clinicalImageList.querySelector(".clinical-image-item p");
+
+    if (emptyItem?.textContent.includes("Sin radiografias") || emptyItem?.textContent.includes("Selecciona")) {
+      clinicalImageList.innerHTML = "";
+    }
+
+    clinicalImageList.prepend(createClinicalImageItem(response.imagen));
+    clinicalImageForm.reset();
+    imageStatus.textContent = "Imagen registrada correctamente.";
+  } catch (error) {
+    imageStatus.textContent = error.message || "No fue posible subir la imagen.";
+    imageStatus.classList.add("is-error");
   }
 }
 
@@ -353,6 +454,7 @@ async function saveClinicalFile(event) {
 
   const payload = {
     edad: clinicalAgeInput.value ? Number(clinicalAgeInput.value) : null,
+    grupoSanguineo: clinicalBloodTypeInput.value,
     alergias: clinicalAllergiesInput.value.trim(),
     antecedentes: clinicalBackgroundInput.value.trim()
   };
@@ -586,6 +688,7 @@ document.addEventListener("keydown", (event) => {
 
 addNoteButton.addEventListener("click", addEvolutionNote);
 clinicalFileForm.addEventListener("submit", saveClinicalFile);
+clinicalImageForm.addEventListener("submit", uploadClinicalImage);
 
 adminLogoutButton.addEventListener("click", () => {
   localStorage.removeItem("adminSession");
@@ -600,4 +703,5 @@ if (activePatientId) {
 } else {
   noteStatus.textContent = "Busca y selecciona un paciente para comenzar.";
   renderNotes([]);
+  renderClinicalImages([]);
 }

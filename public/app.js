@@ -3,6 +3,7 @@ const portalView = document.querySelector("#portal-view");
 const loginForm = document.querySelector("#login-form");
 const registerForm = document.querySelector("#register-form");
 const loginStatus = document.querySelector("#login-status");
+const rememberEmailInput = document.querySelector("#remember-email");
 const logoutButton = document.querySelector("#logout-button");
 const passwordInput = document.querySelector("#password");
 const togglePasswordButton = document.querySelector("#toggle-password");
@@ -84,9 +85,28 @@ function showLogin() {
   portalView.classList.add("is-hidden");
   loginView.classList.remove("is-hidden");
   loginForm.reset();
+  loadRememberedEmail();
   loginStatus.textContent = urlParams.get("acceso") === "odontologo"
     ? "Ingresa con una cuenta de odontologo o administrador."
     : "";
+}
+
+function loadRememberedEmail() {
+  const rememberedEmail = localStorage.getItem("rememberedEmail");
+  if (!rememberedEmail || !rememberEmailInput) return;
+
+  loginForm.elements.email.value = rememberedEmail;
+  rememberEmailInput.checked = true;
+}
+
+function syncRememberedEmail(email) {
+  if (!rememberEmailInput) return;
+
+  if (rememberEmailInput.checked) {
+    localStorage.setItem("rememberedEmail", email);
+  } else {
+    localStorage.removeItem("rememberedEmail");
+  }
 }
 
 // Abre el modal de cancelacion para la tarjeta seleccionada.
@@ -152,6 +172,25 @@ async function requestJson(url, options = {}) {
 
 function getActivePatientId() {
   return Number(localStorage.getItem("pacienteId") || "0");
+}
+
+function resetPatientSession() {
+  localStorage.removeItem("pacienteId");
+  localStorage.removeItem("pacienteNombre");
+  localStorage.removeItem("authToken");
+  localStorage.removeItem("adminSession");
+}
+
+function handlePatientLoadError(error) {
+  if (error?.status === 401 || error?.status === 403) {
+    resetPatientSession();
+    showLogin();
+    loginStatus.textContent = "Tu sesion expiro o no corresponde a este paciente. Inicia sesion nuevamente.";
+    loginStatus.classList.add("is-error");
+    return true;
+  }
+
+  return false;
 }
 
 function formatDateParts(dateValue) {
@@ -220,15 +259,24 @@ async function loadPatientAppointments() {
     return;
   }
 
-  const appointments = await getJson(PATIENT_APPOINTMENTS_ENDPOINT(patientId));
-  appointmentList.innerHTML = "";
-  appointmentsEmpty.textContent = "No tienes citas proximas registradas.";
-  appointments.forEach((appointment) => {
-    appointmentList.appendChild(createAppointmentCard(appointment));
-  });
+  try {
+    const appointments = await getJson(PATIENT_APPOINTMENTS_ENDPOINT(patientId));
+    appointmentList.innerHTML = "";
+    appointmentsEmpty.textContent = "No tienes citas proximas registradas.";
+    appointments.forEach((appointment) => {
+      appointmentList.appendChild(createAppointmentCard(appointment));
+    });
 
-  updateNextAppointment(appointments[0] || null);
-  updateAppointmentsEmptyState();
+    updateNextAppointment(appointments[0] || null);
+    updateAppointmentsEmptyState();
+  } catch (error) {
+    if (handlePatientLoadError(error)) return;
+
+    appointmentList.innerHTML = "";
+    appointmentsEmpty.textContent = "No fue posible cargar tus citas. Revisa la conexion con el servidor.";
+    updateNextAppointment(null);
+    updateAppointmentsEmptyState();
+  }
 }
 
 async function loadPatientRecord() {
@@ -239,6 +287,7 @@ async function loadPatientRecord() {
     const record = await getJson(PATIENT_RECORD_ENDPOINT(patientId));
     const patientName = record.paciente?.nombre || localStorage.getItem("pacienteNombre") || "";
     const allergies = record.expediente?.alergias || "No registradas";
+    const bloodType = record.expediente?.grupoSanguineo || "No registrado";
     const lastNote = record.notasEvolucion?.[0]?.fechaHora || null;
 
     if (patientName) {
@@ -246,12 +295,15 @@ async function loadPatientRecord() {
       document.querySelector("#portal-title").textContent = `Hola, ${patientName}`;
     }
 
-    recordBloodType.textContent = "No registrado";
+    recordBloodType.textContent = bloodType;
     recordAllergies.textContent = allergies;
     recordLastVisit.textContent = formatShortDate(lastNote);
   } catch (error) {
-    recordAllergies.textContent = "No disponible";
-    recordLastVisit.textContent = "No disponible";
+    if (handlePatientLoadError(error)) return;
+
+    recordBloodType.textContent = "No registrado";
+    recordAllergies.textContent = "No registradas";
+    recordLastVisit.textContent = "Sin consultas";
   }
 }
 
@@ -262,17 +314,8 @@ async function loadPatientDashboard() {
     document.querySelector("#portal-title").textContent = `Hola, ${patientName}`;
   }
 
-  try {
-    await Promise.all([
-      loadPatientAppointments(),
-      loadPatientRecord()
-    ]);
-  } catch (error) {
-    appointmentList.innerHTML = "";
-    appointmentsEmpty.textContent = "No fue posible cargar tus citas. Revisa que el servidor este activo.";
-    updateNextAppointment(null);
-    updateAppointmentsEmptyState();
-  }
+  loadPatientAppointments();
+  loadPatientRecord();
 }
 
 function createAppointmentCard(appointment) {
@@ -294,7 +337,7 @@ function createAppointmentCard(appointment) {
         <h3>${escapeHtml(appointment.tratamiento || "Consulta dental")}</h3>
         <span class="status-pill">${escapeHtml(appointment.estatus || "CONFIRMADA")}</span>
       </div>
-      <p>${escapeHtml(appointment.odontologoNombre || "Por asignar")} &middot; Sucursal Centro</p>
+      <p>${escapeHtml(appointment.odontologoNombre || "Por asignar")}</p>
     </div>
     <div class="appointment-card__actions">
       <a class="button button--secondary" href="agendar.html?reprogramar=${encodeURIComponent(appointment.id)}">Reprogramar</a>
@@ -424,6 +467,7 @@ loginForm.addEventListener("submit", async (event) => {
   try {
     const adminResponse = await loginAdmin(payload);
     saveAdminSession(adminResponse);
+    syncRememberedEmail(payload.email);
     window.location.href = getAdminRedirect(adminResponse.usuario.rol);
   } catch (adminError) {
     if (adminError.status !== 401) {
@@ -438,6 +482,7 @@ loginForm.addEventListener("submit", async (event) => {
       const patientResponse = await login(payload);
       localStorage.removeItem("adminSession");
       saveActivePatient(patientResponse);
+      syncRememberedEmail(payload.email);
       showPortal();
       loadPatientDashboard();
     } catch (patientError) {
@@ -453,9 +498,7 @@ loginForm.addEventListener("submit", async (event) => {
 });
 
 logoutButton.addEventListener("click", () => {
-  localStorage.removeItem("pacienteId");
-  localStorage.removeItem("pacienteNombre");
-  localStorage.removeItem("authToken");
+  resetPatientSession();
   appointmentList.innerHTML = "";
   showLogin();
 });

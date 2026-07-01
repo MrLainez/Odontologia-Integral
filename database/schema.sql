@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS citas (
 CREATE TABLE IF NOT EXISTS solicitudes_cita (
   id INT AUTO_INCREMENT PRIMARY KEY,
   paciente_id INT NOT NULL,
+  odontologo_id INT NULL,
   fecha DATE NOT NULL,
   hora TIME NOT NULL,
   motivo VARCHAR(180) NOT NULL,
@@ -76,15 +77,21 @@ CREATE TABLE IF NOT EXISTS solicitudes_cita (
   fecha_resolucion DATETIME NULL,
   CONSTRAINT fk_solicitudes_cita_paciente
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
+  CONSTRAINT fk_solicitudes_cita_odontologo
+    FOREIGN KEY (odontologo_id) REFERENCES odontologos(id),
   CONSTRAINT fk_solicitudes_cita_cita
     FOREIGN KEY (cita_id) REFERENCES citas(id),
   INDEX idx_solicitudes_cita_estatus_fecha (estatus, fecha, hora)
 );
 
+ALTER TABLE solicitudes_cita
+  ADD COLUMN IF NOT EXISTS odontologo_id INT NULL;
+
 CREATE TABLE IF NOT EXISTS expedientes (
   id INT AUTO_INCREMENT PRIMARY KEY,
   paciente_id INT NOT NULL UNIQUE,
   edad INT NULL,
+  grupo_sanguineo VARCHAR(5) NULL,
   alergias VARCHAR(255) NULL,
   antecedentes TEXT NULL,
   fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -95,6 +102,9 @@ CREATE TABLE IF NOT EXISTS expedientes (
 ALTER TABLE expedientes
   ADD COLUMN IF NOT EXISTS edad INT NULL;
 
+ALTER TABLE expedientes
+  ADD COLUMN IF NOT EXISTS grupo_sanguineo VARCHAR(5) NULL;
+
 CREATE TABLE IF NOT EXISTS notas_evolucion (
   id INT AUTO_INCREMENT PRIMARY KEY,
   paciente_id INT NOT NULL,
@@ -103,6 +113,22 @@ CREATE TABLE IF NOT EXISTS notas_evolucion (
   CONSTRAINT fk_notas_paciente
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
   INDEX idx_notas_paciente_fecha (paciente_id, fecha_hora)
+);
+
+CREATE TABLE IF NOT EXISTS imagenes_clinicas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  paciente_id INT NOT NULL,
+  tipo VARCHAR(40) NOT NULL DEFAULT 'IMAGEN',
+  descripcion VARCHAR(255) NULL,
+  nombre_original VARCHAR(255) NOT NULL,
+  nombre_archivo VARCHAR(255) NOT NULL,
+  content_type VARCHAR(120) NOT NULL,
+  ruta_archivo VARCHAR(500) NOT NULL,
+  url_publica VARCHAR(500) NOT NULL,
+  fecha_subida DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_imagenes_clinicas_paciente
+    FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
+  INDEX idx_imagenes_clinicas_paciente_fecha (paciente_id, fecha_subida)
 );
 
 CREATE TABLE IF NOT EXISTS odontograma_piezas (
@@ -133,6 +159,18 @@ CREATE TABLE IF NOT EXISTS horarios_atencion (
   activo BOOLEAN NOT NULL DEFAULT FALSE,
   hora_inicio TIME NOT NULL,
   hora_fin TIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS horarios_odontologo (
+  odontologo_id INT NOT NULL,
+  dia_semana TINYINT NOT NULL,
+  activo BOOLEAN NOT NULL DEFAULT FALSE,
+  hora_inicio TIME NOT NULL,
+  hora_fin TIME NOT NULL,
+  PRIMARY KEY (odontologo_id, dia_semana),
+  CONSTRAINT fk_horarios_odontologo
+    FOREIGN KEY (odontologo_id) REFERENCES odontologos(id)
+    ON DELETE CASCADE
 );
 
 INSERT IGNORE INTO horarios_atencion (dia_semana, activo, hora_inicio, hora_fin)

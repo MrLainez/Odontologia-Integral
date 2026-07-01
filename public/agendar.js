@@ -9,12 +9,17 @@ const scheduleStatus = document.querySelector("#schedule-status");
 const confirmationToast = document.querySelector("#confirmation-toast");
 const toastMessage = document.querySelector("#toast-message");
 const scheduleTitle = document.querySelector("#schedule-title");
-
-const availableTimes = ["09:00 AM", "10:30 AM", "12:00 PM", "04:00 PM", "05:30 PM"];
+const previousMonthButton = document.querySelector("#previous-month");
+const nextMonthButton = document.querySelector("#next-month");
+const preferredDentistSelect = document.querySelector("#preferred-dentist");
+const summaryDentist = document.querySelector("#summary-dentist");
+const appointmentReasonInput = document.querySelector("#appointment-reason");
 const API_BASE_URL = window.location.origin;
 const APPOINTMENT_ENDPOINT = `${API_BASE_URL}/api/citas`;
 const APPOINTMENT_REQUEST_ENDPOINT = `${API_BASE_URL}/api/solicitudes-cita`;
 const AVAILABILITY_ENDPOINT = `${API_BASE_URL}/api/citas/disponibilidad`;
+const BUSINESS_HOURS_ENDPOINT = `${API_BASE_URL}/api/horarios-atencion`;
+const DENTISTS_ENDPOINT = `${API_BASE_URL}/api/odontologos`;
 const monthNames = [
   "Enero",
   "Febrero",
@@ -32,12 +37,15 @@ const monthNames = [
 
 const today = new Date();
 today.setHours(0, 0, 0, 0);
+const firstAvailableMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
 let selectedDayKey = "";
 let selectedTime = "";
 let selectedTimeValue = "";
 let selectedFormattedDate = "";
 let toastTimer = 0;
+let visibleMonthDate = new Date(today.getFullYear(), today.getMonth(), 1);
+let activeWeekDays = new Set([1, 2, 3, 4, 5, 6]);
 const params = new URLSearchParams(window.location.search);
 const rescheduleAppointmentId = Number(params.get("reprogramar") || "0");
 const isRescheduleMode = rescheduleAppointmentId > 0;
@@ -64,11 +72,10 @@ function getDateKey(date) {
 // Define si un dia se puede seleccionar.
 function isAvailableDay(date) {
   const dayOfWeek = date.getDay();
+  const isoDayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
   const isPast = date < today;
-  const isSunday = dayOfWeek === 0;
-  const simulatedClosedDay = date.getDate() % 9 === 0;
 
-  return !isPast && !isSunday && !simulatedClosedDay;
+  return !isPast && activeWeekDays.has(isoDayOfWeek);
 }
 
 // Formato visible para el paciente.
@@ -76,16 +83,48 @@ function formatDate(date) {
   return `${date.getDate()} de ${monthNames[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-// RF2: genera dinamicamente el calendario del mes actual.
+function resetSelection() {
+  selectedDayKey = "";
+  selectedTime = "";
+  selectedTimeValue = "";
+  selectedFormattedDate = "";
+  summaryDate.textContent = "Sin seleccionar";
+  summaryTime.textContent = "Sin seleccionar";
+  summaryStatus.textContent = "Pendiente";
+  scheduleStatus.textContent = "";
+  timeSlots.innerHTML = "";
+  confirmSlotButton.disabled = true;
+  confirmSlotButton.classList.remove("is-visible");
+}
+
+function updateMonthNavigation() {
+  const isCurrentMonth = visibleMonthDate.getFullYear() === firstAvailableMonth.getFullYear()
+    && visibleMonthDate.getMonth() === firstAvailableMonth.getMonth();
+
+  previousMonthButton.disabled = isCurrentMonth;
+}
+
+function changeVisibleMonth(offset) {
+  const nextMonth = new Date(visibleMonthDate.getFullYear(), visibleMonthDate.getMonth() + offset, 1);
+
+  if (nextMonth < firstAvailableMonth) return;
+
+  visibleMonthDate = nextMonth;
+  resetSelection();
+  renderCalendar();
+}
+
+// RF2: genera dinamicamente el calendario del mes visible.
 function renderCalendar() {
-  const year = today.getFullYear();
-  const month = today.getMonth();
+  const year = visibleMonthDate.getFullYear();
+  const month = visibleMonthDate.getMonth();
   const firstDay = new Date(year, month, 1);
   const totalDays = new Date(year, month + 1, 0).getDate();
   const startOffset = (firstDay.getDay() + 6) % 7;
 
   currentMonthLabel.textContent = `${monthNames[month]} ${year}`;
   calendarGrid.innerHTML = "";
+  updateMonthNavigation();
 
   for (let index = 0; index < startOffset; index += 1) {
     const emptyCell = document.createElement("span");
@@ -162,6 +201,9 @@ async function renderTimeSlots(date) {
 async function loadAvailability(dateKey) {
   const url = new URL(AVAILABILITY_ENDPOINT);
   url.searchParams.set("fecha", dateKey);
+  if (preferredDentistSelect?.value) {
+    url.searchParams.set("odontologoId", preferredDentistSelect.value);
+  }
   if (isRescheduleMode) {
     url.searchParams.set("excluirCitaId", String(rescheduleAppointmentId));
   }
@@ -181,6 +223,33 @@ async function loadAvailability(dateKey) {
   }
 
   return data;
+}
+
+async function loadBusinessHours() {
+  const response = await fetch(BUSINESS_HOURS_ENDPOINT);
+  const schedules = await response.json().catch(() => []);
+
+  if (!response.ok) return;
+
+  activeWeekDays = new Set(
+    schedules
+      .filter((schedule) => schedule.activo)
+      .map((schedule) => Number(schedule.diaSemana))
+  );
+}
+
+async function loadDentists() {
+  const response = await fetch(DENTISTS_ENDPOINT);
+  const dentists = await response.json().catch(() => []);
+
+  if (!response.ok || !preferredDentistSelect) return;
+
+  dentists.forEach((dentist) => {
+    const option = document.createElement("option");
+    option.value = dentist.id;
+    option.textContent = dentist.nombre;
+    preferredDentistSelect.append(option);
+  });
 }
 
 function renderAvailabilityChips(availability) {
@@ -272,10 +341,13 @@ function timeToTwentyFourHourValue(time) {
 }
 
 function buildAppointmentPayload() {
+  const motivo = appointmentReasonInput?.value.trim() || "Solicitud de cita";
+
   return {
     pacienteId: getActivePatientId(),
+    odontologoId: Number(preferredDentistSelect?.value || "0"),
     fechaHora: `${selectedDayKey}T${selectedTimeValue || timeToTwentyFourHourValue(selectedTime)}`,
-    motivo: "Cita agendada desde Portal Publico"
+    motivo
   };
 }
 
@@ -334,4 +406,20 @@ confirmSlotButton.addEventListener("click", async () => {
   }
 });
 
-renderCalendar();
+previousMonthButton.addEventListener("click", () => changeVisibleMonth(-1));
+nextMonthButton.addEventListener("click", () => changeVisibleMonth(1));
+preferredDentistSelect.addEventListener("change", () => {
+  summaryDentist.textContent = preferredDentistSelect.selectedOptions[0]?.textContent || "Sin preferencia";
+  if (selectedDayKey) {
+    confirmSlotButton.disabled = true;
+    confirmSlotButton.classList.remove("is-visible");
+    summaryTime.textContent = "Sin seleccionar";
+    selectedTime = "";
+    selectedTimeValue = "";
+    renderTimeSlots(new Date(`${selectedDayKey}T00:00:00`));
+  }
+});
+
+Promise.all([loadBusinessHours(), loadDentists()])
+  .catch(() => {})
+  .finally(renderCalendar);

@@ -1,4 +1,6 @@
 ### IntelliJ IDEA ###
+.idea/
+*.iml
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
@@ -6,6 +8,11 @@ out/
 ### Kotlin ###
 .kotlin
 .gradle/
+build/
+
+### Configuracion local ###
+config.properties
+config.local.properties
 
 ### Eclipse ###
 .apt_generated
@@ -28,6 +35,12 @@ bin/
 
 ### VS Code ###
 .vscode/
+
+### Archivos clinicos subidos ###
+uploads/
+
+### Archivos internos de herramientas ###
+.agents/
 
 ### Mac OS ###
 .DS_Store

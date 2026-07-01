@@ -19,6 +19,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.Properties
 import java.util.Base64
+import java.util.UUID
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
@@ -71,8 +72,13 @@ data class AgendarCitaRequest(
 
 data class CrearCitaRequest(
     val pacienteId: Int = 0,
+    val odontologoId: Int = 0,
     val fechaHora: String = "",
     val motivo: String = ""
+)
+
+data class AceptarSolicitudCitaRequest(
+    val odontologoId: Int = 0
 )
 
 data class ReprogramarCitaRequest(
@@ -82,6 +88,7 @@ data class ReprogramarCitaRequest(
 
 data class CrearSolicitudCitaRequest(
     val pacienteId: Int = 0,
+    val odontologoId: Int = 0,
     val fechaHora: String = "",
     val motivo: String = ""
 )
@@ -101,6 +108,7 @@ data class CrearNotaRequest(
 
 data class ActualizarExpedienteRequest(
     val edad: Int? = null,
+    val grupoSanguineo: String? = null,
     val alergias: String? = null,
     val antecedentes: String? = null
 )
@@ -159,7 +167,7 @@ object AppConfig {
     }
 }
 
-// Punto unico para abrir conexiones JDBC hacia MariaDB.
+// Punto único para abrir conexiones JDBC hacia MariaDB.
 object Database {
     private val jdbcUrl = AppConfig.get("DB_URL", "jdbc:mariadb://localhost:3306/odonto_gral")
     private val user = AppConfig.get("DB_USER", "root")
@@ -406,7 +414,10 @@ object PatientRepository {
                     throw PatientNotFoundException()
                 }
 
+                val clinicalImagePaths = findClinicalImagePaths(connection, id)
+
                 deleteByPatientId(connection, "odontograma_piezas", id)
+                deleteByPatientId(connection, "imagenes_clinicas", id)
                 deleteByPatientId(connection, "notas_evolucion", id)
                 deleteByPatientId(connection, "expedientes", id)
                 deleteByPatientId(connection, "solicitudes_cita", id)
@@ -414,6 +425,7 @@ object PatientRepository {
                 deletePatient(connection, id)
 
                 connection.commit()
+                clinicalImagePaths.forEach { path -> File(path).delete() }
             } catch (error: Exception) {
                 connection.rollback()
                 throw error
@@ -421,6 +433,23 @@ object PatientRepository {
                 connection.autoCommit = true
             }
         }
+    }
+
+    private fun findClinicalImagePaths(connection: Connection, patientId: Int): List<String> {
+        val sql = "SELECT ruta_archivo FROM imagenes_clinicas WHERE paciente_id = ?"
+        val paths = mutableListOf<String>()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, patientId)
+
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    paths.add(result.getString("ruta_archivo"))
+                }
+            }
+        }
+
+        return paths
     }
 
     private fun patientExists(connection: Connection, id: Int): Boolean {
@@ -497,16 +526,34 @@ object AdminRepository {
         """.trimIndent()
 
         Database.connection().use { connection ->
-            connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
-                statement.setString(1, request.nombre.trim())
-                statement.setString(2, request.email.trim().lowercase())
-                statement.setString(3, hashPassword(request.password))
-                statement.setString(4, role.databaseValue)
-                statement.executeUpdate()
+            connection.autoCommit = false
 
-                statement.generatedKeys.use { keys ->
-                    if (keys.next()) return keys.getInt(1)
+            try {
+                connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
+                    statement.setString(1, request.nombre.trim())
+                    statement.setString(2, request.email.trim().lowercase())
+                    statement.setString(3, hashPassword(request.password))
+                    statement.setString(4, role.databaseValue)
+                    statement.executeUpdate()
+
+                    statement.generatedKeys.use { keys ->
+                        if (keys.next()) {
+                            val userId = keys.getInt(1)
+
+                            if (role == AdminRole.DENTIST) {
+                                DentistRepository.create(connection, request.nombre)
+                            }
+
+                            connection.commit()
+                            return userId
+                        }
+                    }
                 }
+            } catch (error: Exception) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
             }
         }
 
@@ -759,6 +806,255 @@ object BusinessHoursRepository {
     }
 }
 
+object DentistRepository {
+    fun create(connection: Connection, name: String): Int {
+        val sql = """
+            INSERT INTO odontologos (nombre, activo)
+            VALUES (?, TRUE)
+        """.trimIndent()
+
+        connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
+            statement.setString(1, name.trim())
+            statement.executeUpdate()
+
+            statement.generatedKeys.use { keys ->
+                if (keys.next()) return keys.getInt(1)
+            }
+        }
+
+        error("No fue posible obtener el id del odontologo registrado.")
+    }
+
+    fun listActive(): List<Map<String, Any?>> {
+        val sql = """
+            SELECT id, nombre, activo
+            FROM odontologos
+            WHERE activo = TRUE
+            ORDER BY nombre ASC
+        """.trimIndent()
+        val dentists = mutableListOf<Map<String, Any?>>()
+
+        Database.connection().use { connection ->
+            syncFromAdminUsers(connection)
+
+            connection.prepareStatement(sql).use { statement ->
+                statement.executeQuery().use { result ->
+                    while (result.next()) {
+                        dentists.add(
+                            mapOf(
+                                "id" to result.getInt("id"),
+                                "nombre" to result.getString("nombre"),
+                                "activo" to result.getBoolean("activo")
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        return dentists
+    }
+
+    private fun syncFromAdminUsers(connection: Connection) {
+        val sql = """
+            INSERT INTO odontologos (nombre, activo)
+            SELECT ua.nombre, TRUE
+            FROM usuarios_admin ua
+            WHERE ua.rol = 'ODONTOLOGO'
+              AND ua.activo = TRUE
+              AND NOT EXISTS (
+                SELECT 1
+                FROM odontologos o
+                WHERE LOWER(o.nombre) = LOWER(ua.nombre)
+              )
+        """.trimIndent()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.executeUpdate()
+        }
+    }
+}
+
+object DentistHoursRepository {
+    private val dayLabels = mapOf(
+        1 to "Lunes",
+        2 to "Martes",
+        3 to "Miercoles",
+        4 to "Jueves",
+        5 to "Viernes",
+        6 to "Sabado",
+        7 to "Domingo"
+    )
+
+    fun list(odontologistId: Int): List<Map<String, Any?>> {
+        val customSchedules = findCustomSchedules(odontologistId).associateBy { it["diaSemana"] as Int }
+
+        if (customSchedules.isEmpty()) {
+            return BusinessHoursRepository.list().map { schedule ->
+                schedule + ("heredado" to true)
+            }
+        }
+
+        return (1..7).map { day ->
+            customSchedules[day] ?: inheritedScheduleForDay(day)
+        }
+    }
+
+    fun update(odontologistId: Int, requests: List<HorarioAtencionRequest>) {
+        if (odontologistId <= 0) {
+            throw IllegalArgumentException("El odontologo es obligatorio.")
+        }
+
+        if (requests.size != 7) {
+            throw IllegalArgumentException("Debes enviar la configuracion de los 7 dias.")
+        }
+
+        Database.connection().use { connection ->
+            connection.autoCommit = false
+
+            try {
+                requests.forEach { request ->
+                    validateSchedule(request)
+                    upsertSchedule(connection, odontologistId, request)
+                }
+                connection.commit()
+            } catch (error: Exception) {
+                connection.rollback()
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    fun slotsForDate(date: LocalDate, odontologistId: Int?): List<LocalTime> {
+        if (odontologistId == null || odontologistId <= 0) {
+            return BusinessHoursRepository.slotsForDate(date)
+        }
+
+        val dayOfWeek = date.dayOfWeek.value
+        val sql = """
+            SELECT activo, hora_inicio, hora_fin
+            FROM horarios_odontologo
+            WHERE odontologo_id = ? AND dia_semana = ?
+            LIMIT 1
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, odontologistId)
+                statement.setInt(2, dayOfWeek)
+
+                statement.executeQuery().use { result ->
+                    if (!result.next()) return BusinessHoursRepository.slotsForDate(date)
+                    if (!result.getBoolean("activo")) return emptyList()
+
+                    val start = result.getTime("hora_inicio")?.toLocalTime() ?: return emptyList()
+                    val end = result.getTime("hora_fin")?.toLocalTime() ?: return emptyList()
+                    return generateHalfHourSlots(start, end)
+                }
+            }
+        }
+    }
+
+    private fun findCustomSchedules(odontologistId: Int): List<Map<String, Any?>> {
+        val sql = """
+            SELECT dia_semana, activo, hora_inicio, hora_fin
+            FROM horarios_odontologo
+            WHERE odontologo_id = ?
+            ORDER BY dia_semana ASC
+        """.trimIndent()
+        val schedules = mutableListOf<Map<String, Any?>>()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, odontologistId)
+
+                statement.executeQuery().use { result ->
+                    while (result.next()) {
+                        val day = result.getInt("dia_semana")
+                        schedules.add(
+                            mapOf(
+                                "diaSemana" to day,
+                                "diaNombre" to (dayLabels[day] ?: "Dia $day"),
+                                "activo" to result.getBoolean("activo"),
+                                "horaInicio" to result.getTime("hora_inicio")?.toLocalTime()?.toString(),
+                                "horaFin" to result.getTime("hora_fin")?.toLocalTime()?.toString(),
+                                "heredado" to false
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        return schedules
+    }
+
+    private fun inheritedScheduleForDay(day: Int): Map<String, Any?> {
+        return BusinessHoursRepository.list()
+            .firstOrNull { it["diaSemana"] == day }
+            ?.plus("heredado" to true)
+            ?: mapOf(
+                "diaSemana" to day,
+                "diaNombre" to (dayLabels[day] ?: "Dia $day"),
+                "activo" to false,
+                "horaInicio" to "09:00",
+                "horaFin" to "18:00",
+                "heredado" to true
+            )
+    }
+
+    private fun upsertSchedule(connection: Connection, odontologistId: Int, request: HorarioAtencionRequest) {
+        val sql = """
+            INSERT INTO horarios_odontologo (odontologo_id, dia_semana, activo, hora_inicio, hora_fin)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              activo = VALUES(activo),
+              hora_inicio = VALUES(hora_inicio),
+              hora_fin = VALUES(hora_fin)
+        """.trimIndent()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, odontologistId)
+            statement.setInt(2, request.diaSemana)
+            statement.setBoolean(3, request.activo)
+            statement.setTime(4, Time.valueOf(parseTime(request.horaInicio)))
+            statement.setTime(5, Time.valueOf(parseTime(request.horaFin)))
+            statement.executeUpdate()
+        }
+    }
+
+    private fun validateSchedule(request: HorarioAtencionRequest) {
+        if (request.diaSemana !in 1..7) {
+            throw IllegalArgumentException("diaSemana debe estar entre 1 y 7.")
+        }
+
+        val start = parseTime(request.horaInicio)
+        val end = parseTime(request.horaFin)
+
+        if ((start.minute != 0 && start.minute != 30) || (end.minute != 0 && end.minute != 30)) {
+            throw IllegalArgumentException("Los horarios deben estar en intervalos de 30 minutos.")
+        }
+
+        if (!start.isBefore(end)) {
+            throw IllegalArgumentException("La hora de inicio debe ser menor que la hora de fin.")
+        }
+    }
+
+    private fun generateHalfHourSlots(start: LocalTime, end: LocalTime): List<LocalTime> {
+        val slots = mutableListOf<LocalTime>()
+        var current = start
+
+        while (current.isBefore(end)) {
+            slots.add(current)
+            current = current.plusMinutes(30)
+        }
+
+        return slots
+    }
+}
+
 // Fechas especiales donde el consultorio no atiende aunque el dia semanal este activo.
 object HolidayRepository {
     fun list(): List<Map<String, Any?>> {
@@ -871,11 +1167,16 @@ object AppointmentRepository {
     }
 
     fun create(request: CrearCitaRequest): Int {
+        val odontologistId = request.odontologoId.takeIf { it > 0 } ?: defaultOdontologistId
+        return createWithDentist(request, odontologistId)
+    }
+
+    fun createWithDentist(request: CrearCitaRequest, odontologistId: Int): Int {
         val appointmentDateTime = parseDateTime(request.fechaHora)
 
         return scheduleInternal(
             pacienteId = request.pacienteId,
-            odontologoId = defaultOdontologistId,
+            odontologoId = odontologistId,
             date = appointmentDateTime.toLocalDate(),
             time = appointmentDateTime.toLocalTime(),
             treatment = request.motivo
@@ -907,9 +1208,12 @@ object AppointmentRepository {
 
     fun listByDate(date: LocalDate): List<Map<String, Any?>> {
         val sql = """
-            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus, p.id AS paciente_id, p.nombre AS paciente_nombre
+            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus,
+                   p.id AS paciente_id, p.nombre AS paciente_nombre,
+                   o.id AS odontologo_id, o.nombre AS odontologo_nombre
             FROM citas c
             INNER JOIN pacientes p ON p.id = c.paciente_id
+            LEFT JOIN odontologos o ON o.id = c.odontologo_id
             WHERE c.fecha = ?
             ORDER BY c.hora ASC
         """.trimIndent()
@@ -929,7 +1233,9 @@ object AppointmentRepository {
                                 "tratamiento" to result.getString("tratamiento"),
                                 "estatus" to result.getString("estatus"),
                                 "pacienteId" to result.getInt("paciente_id"),
-                                "pacienteNombre" to result.getString("paciente_nombre")
+                                "pacienteNombre" to result.getString("paciente_nombre"),
+                                "odontologoId" to result.getObject("odontologo_id"),
+                                "odontologoNombre" to result.getString("odontologo_nombre")
                             )
                         )
                     }
@@ -976,9 +1282,9 @@ object AppointmentRepository {
         return appointments
     }
 
-    fun availability(date: LocalDate, excludedAppointmentId: Int? = null): List<Map<String, Any?>> {
-        val busyTimes = findBusyTimes(date, excludedAppointmentId)
-        val configuredTimes = BusinessHoursRepository.slotsForDate(date)
+    fun availability(date: LocalDate, excludedAppointmentId: Int? = null, odontologistId: Int? = null): List<Map<String, Any?>> {
+        val busyTimes = findBusyTimes(date, excludedAppointmentId, odontologistId)
+        val configuredTimes = DentistHoursRepository.slotsForDate(date, odontologistId)
 
         return configuredTimes.map { time ->
             mapOf(
@@ -1075,7 +1381,7 @@ object AppointmentRepository {
 
             try {
                 // Regla critica: no permitir dos citas activas en la misma fecha y hora.
-                if (isSlotTaken(connection, date, time)) {
+                if (isSlotTaken(connection, date, time, odontologoId = odontologoId)) {
                     connection.rollback()
                     throw AppointmentConflictException()
                 }
@@ -1092,12 +1398,19 @@ object AppointmentRepository {
         }
     }
 
-    private fun isSlotTaken(connection: Connection, date: LocalDate, time: LocalTime, excludedAppointmentId: Int? = null): Boolean {
+    private fun isSlotTaken(
+        connection: Connection,
+        date: LocalDate,
+        time: LocalTime,
+        excludedAppointmentId: Int? = null,
+        odontologoId: Int? = null
+    ): Boolean {
         val sql = """
             SELECT COUNT(*) AS total
             FROM citas
             WHERE fecha = ? AND hora = ? AND estatus <> 'CANCELADA'
               AND (? IS NULL OR id <> ?)
+              AND (? IS NULL OR odontologo_id = ?)
         """.trimIndent()
 
         connection.prepareStatement(sql).use { statement ->
@@ -1110,6 +1423,13 @@ object AppointmentRepository {
                 statement.setInt(3, excludedAppointmentId)
                 statement.setInt(4, excludedAppointmentId)
             }
+            if (odontologoId == null) {
+                statement.setNull(5, java.sql.Types.INTEGER)
+                statement.setNull(6, java.sql.Types.INTEGER)
+            } else {
+                statement.setInt(5, odontologoId)
+                statement.setInt(6, odontologoId)
+            }
 
             statement.executeQuery().use { result ->
                 result.next()
@@ -1118,12 +1438,13 @@ object AppointmentRepository {
         }
     }
 
-    private fun findBusyTimes(date: LocalDate, excludedAppointmentId: Int?): Set<LocalTime> {
+    private fun findBusyTimes(date: LocalDate, excludedAppointmentId: Int?, odontologistId: Int?): Set<LocalTime> {
         val sql = """
             SELECT hora
             FROM citas
             WHERE fecha = ? AND estatus <> 'CANCELADA'
               AND (? IS NULL OR id <> ?)
+              AND (? IS NULL OR odontologo_id = ?)
         """.trimIndent()
         val times = mutableSetOf<LocalTime>()
 
@@ -1136,6 +1457,13 @@ object AppointmentRepository {
                 } else {
                     statement.setInt(2, excludedAppointmentId)
                     statement.setInt(3, excludedAppointmentId)
+                }
+                if (odontologistId == null) {
+                    statement.setNull(4, java.sql.Types.INTEGER)
+                    statement.setNull(5, java.sql.Types.INTEGER)
+                } else {
+                    statement.setInt(4, odontologistId)
+                    statement.setInt(5, odontologistId)
                 }
 
                 statement.executeQuery().use { result ->
@@ -1206,16 +1534,17 @@ object AppointmentRequestRepository {
     fun create(request: CrearSolicitudCitaRequest): Int {
         val dateTime = parseDateTime(request.fechaHora)
         val sql = """
-            INSERT INTO solicitudes_cita (paciente_id, fecha, hora, motivo, estatus, fecha_solicitud)
-            VALUES (?, ?, ?, ?, 'PENDIENTE', NOW())
+            INSERT INTO solicitudes_cita (paciente_id, odontologo_id, fecha, hora, motivo, estatus, fecha_solicitud)
+            VALUES (?, ?, ?, ?, ?, 'PENDIENTE', NOW())
         """.trimIndent()
 
         Database.connection().use { connection ->
             connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
                 statement.setInt(1, request.pacienteId)
-                statement.setDate(2, Date.valueOf(dateTime.toLocalDate()))
-                statement.setTime(3, Time.valueOf(dateTime.toLocalTime()))
-                statement.setString(4, request.motivo.trim())
+                if (request.odontologoId > 0) statement.setInt(2, request.odontologoId) else statement.setNull(2, java.sql.Types.INTEGER)
+                statement.setDate(3, Date.valueOf(dateTime.toLocalDate()))
+                statement.setTime(4, Time.valueOf(dateTime.toLocalTime()))
+                statement.setString(5, request.motivo.trim())
                 statement.executeUpdate()
 
                 statement.generatedKeys.use { keys ->
@@ -1230,9 +1559,10 @@ object AppointmentRequestRepository {
     fun list(status: String = "PENDIENTE"): List<Map<String, Any?>> {
         val sql = """
             SELECT s.id, s.paciente_id, p.nombre AS paciente_nombre, s.fecha, s.hora, s.motivo,
-                   s.estatus, s.fecha_solicitud, s.cita_id
+                   s.estatus, s.fecha_solicitud, s.cita_id, s.odontologo_id, o.nombre AS odontologo_nombre
             FROM solicitudes_cita s
             INNER JOIN pacientes p ON p.id = s.paciente_id
+            LEFT JOIN odontologos o ON o.id = s.odontologo_id
             WHERE s.estatus = ?
             ORDER BY s.fecha ASC, s.hora ASC
         """.trimIndent()
@@ -1252,6 +1582,8 @@ object AppointmentRequestRepository {
                                 "fecha" to result.getDate("fecha")?.toLocalDate()?.toString(),
                                 "hora" to result.getTime("hora")?.toLocalTime()?.toString(),
                                 "motivo" to result.getString("motivo"),
+                                "odontologoId" to result.getObject("odontologo_id"),
+                                "odontologoNombre" to result.getString("odontologo_nombre"),
                                 "estatus" to result.getString("estatus"),
                                 "fechaSolicitud" to result.getTimestamp("fecha_solicitud")?.toLocalDateTime()?.toString(),
                                 "citaId" to result.getObject("cita_id")
@@ -1265,32 +1597,36 @@ object AppointmentRequestRepository {
         return requests
     }
 
-    fun accept(id: Int): Int {
+    fun accept(id: Int, assignedOdontologistId: Int? = null): Int {
         val request = findPending(id) ?: throw AppointmentRequestNotFoundException()
         val date = request["fecha"] as LocalDate
         val time = request["hora"] as LocalTime
         val patientId = request["pacienteId"] as Int
+        val odontologistId = assignedOdontologistId?.takeIf { it > 0 }
+            ?: request["odontologoId"] as? Int
+            ?: AppConfig.getInt("DEFAULT_ODONTOLOGO_ID", 1)
         val reason = request["motivo"] as String
 
-        val appointmentId = AppointmentRepository.create(
+        val appointmentId = AppointmentRepository.createWithDentist(
             CrearCitaRequest(
                 pacienteId = patientId,
                 fechaHora = "${date}T${time}",
                 motivo = reason
-            )
+            ),
+            odontologistId
         )
-        mark(id, "ACEPTADA", appointmentId)
+        mark(id, "ACEPTADA", appointmentId, odontologistId)
         return appointmentId
     }
 
     fun reject(id: Int) {
-        val updated = mark(id, "RECHAZADA", null)
+        val updated = mark(id, "RECHAZADA", null, null)
         if (!updated) throw AppointmentRequestNotFoundException()
     }
 
     private fun findPending(id: Int): Map<String, Any?>? {
         val sql = """
-            SELECT id, paciente_id, fecha, hora, motivo
+            SELECT id, paciente_id, odontologo_id, fecha, hora, motivo
             FROM solicitudes_cita
             WHERE id = ? AND estatus = 'PENDIENTE'
             LIMIT 1
@@ -1306,6 +1642,7 @@ object AppointmentRequestRepository {
                     return mapOf(
                         "id" to result.getInt("id"),
                         "pacienteId" to result.getInt("paciente_id"),
+                        "odontologoId" to result.getObject("odontologo_id"),
                         "fecha" to result.getDate("fecha").toLocalDate(),
                         "hora" to result.getTime("hora").toLocalTime(),
                         "motivo" to result.getString("motivo")
@@ -1315,10 +1652,10 @@ object AppointmentRequestRepository {
         }
     }
 
-    private fun mark(id: Int, status: String, appointmentId: Int?): Boolean {
+    private fun mark(id: Int, status: String, appointmentId: Int?, odontologistId: Int?): Boolean {
         val sql = """
             UPDATE solicitudes_cita
-            SET estatus = ?, cita_id = ?, fecha_resolucion = NOW()
+            SET estatus = ?, cita_id = ?, odontologo_id = COALESCE(?, odontologo_id), fecha_resolucion = NOW()
             WHERE id = ? AND estatus = 'PENDIENTE'
         """.trimIndent()
 
@@ -1326,7 +1663,8 @@ object AppointmentRequestRepository {
             connection.prepareStatement(sql).use { statement ->
                 statement.setString(1, status)
                 if (appointmentId == null) statement.setNull(2, java.sql.Types.INTEGER) else statement.setInt(2, appointmentId)
-                statement.setInt(3, id)
+                if (odontologistId == null) statement.setNull(3, java.sql.Types.INTEGER) else statement.setInt(3, odontologistId)
+                statement.setInt(4, id)
                 return statement.executeUpdate() > 0
             }
         }
@@ -1357,7 +1695,8 @@ object ClinicalRepository {
                 "paciente" to patient,
                 "expediente" to expediente,
                 "notasEvolucion" to findNotes(connection, patientId),
-                "odontograma" to findOdontogram(connection, patientId)
+                "odontograma" to findOdontogram(connection, patientId),
+                "imagenesClinicas" to findClinicalImages(connection, patientId)
             )
         }
     }
@@ -1371,23 +1710,26 @@ object ClinicalRepository {
 
             val currentFile = findClinicalFile(connection, patientId)
             val sql = """
-                INSERT INTO expedientes (paciente_id, edad, alergias, antecedentes)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO expedientes (paciente_id, edad, grupo_sanguineo, alergias, antecedentes)
+                VALUES (?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                   edad = VALUES(edad),
+                  grupo_sanguineo = VALUES(grupo_sanguineo),
                   alergias = VALUES(alergias),
                   antecedentes = VALUES(antecedentes)
             """.trimIndent()
 
             connection.prepareStatement(sql).use { statement ->
                 val age = request.edad ?: (currentFile["edad"] as? Int)
+                val bloodType = if (request.grupoSanguineo != null) request.grupoSanguineo.trim().ifBlank { null } else currentFile["grupoSanguineo"] as? String
                 val allergies = if (request.alergias != null) request.alergias.trim().ifBlank { null } else currentFile["alergias"] as? String
                 val background = if (request.antecedentes != null) request.antecedentes.trim().ifBlank { null } else currentFile["antecedentes"] as? String
 
                 statement.setInt(1, patientId)
                 if (age == null) statement.setNull(2, java.sql.Types.INTEGER) else statement.setInt(2, age)
-                if (allergies == null) statement.setNull(3, java.sql.Types.VARCHAR) else statement.setString(3, allergies)
-                if (background == null) statement.setNull(4, java.sql.Types.LONGVARCHAR) else statement.setString(4, background)
+                if (bloodType == null) statement.setNull(3, java.sql.Types.VARCHAR) else statement.setString(3, bloodType)
+                if (allergies == null) statement.setNull(4, java.sql.Types.VARCHAR) else statement.setString(4, allergies)
+                if (background == null) statement.setNull(5, java.sql.Types.LONGVARCHAR) else statement.setString(5, background)
                 statement.executeUpdate()
             }
 
@@ -1444,6 +1786,51 @@ object ClinicalRepository {
         error("No fue posible obtener el id de la nota registrada.")
     }
 
+    fun addClinicalImage(
+        patientId: Int,
+        type: String,
+        description: String?,
+        originalName: String,
+        storedName: String,
+        contentType: String,
+        filePath: String,
+        publicUrl: String
+    ): Map<String, Any?> {
+        val sql = """
+            INSERT INTO imagenes_clinicas (
+              paciente_id, tipo, descripcion, nombre_original, nombre_archivo,
+              content_type, ruta_archivo, url_publica, fecha_subida
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            if (findPatient(connection, patientId) == null) {
+                throw PatientNotFoundException()
+            }
+
+            connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
+                statement.setInt(1, patientId)
+                statement.setString(2, type.trim().uppercase().ifBlank { "IMAGEN" })
+                if (description.isNullOrBlank()) statement.setNull(3, java.sql.Types.VARCHAR) else statement.setString(3, description.trim())
+                statement.setString(4, originalName)
+                statement.setString(5, storedName)
+                statement.setString(6, contentType)
+                statement.setString(7, filePath)
+                statement.setString(8, publicUrl)
+                statement.executeUpdate()
+
+                statement.generatedKeys.use { keys ->
+                    if (keys.next()) {
+                        return findClinicalImageById(connection, keys.getInt(1))
+                    }
+                }
+            }
+        }
+
+        error("No fue posible obtener el id de la imagen registrada.")
+    }
+
     private fun findPatient(connection: Connection, patientId: Int): Map<String, Any?>? {
         val sql = """
             SELECT id, nombre, telefono, email, fecha_registro
@@ -1491,7 +1878,7 @@ object ClinicalRepository {
 
     private fun findClinicalFile(connection: Connection, patientId: Int): Map<String, Any?> {
         val sql = """
-            SELECT id, edad, alergias, antecedentes, fecha_creacion
+            SELECT id, edad, grupo_sanguineo, alergias, antecedentes, fecha_creacion
             FROM expedientes
             WHERE paciente_id = ?
             LIMIT 1
@@ -1505,6 +1892,7 @@ object ClinicalRepository {
                     return mapOf(
                         "id" to null,
                         "edad" to null,
+                        "grupoSanguineo" to null,
                         "alergias" to null,
                         "antecedentes" to null,
                         "fechaCreacion" to null
@@ -1514,6 +1902,7 @@ object ClinicalRepository {
                 return mapOf(
                     "id" to result.getInt("id"),
                     "edad" to result.getObject("edad"),
+                    "grupoSanguineo" to result.getString("grupo_sanguineo"),
                     "alergias" to result.getString("alergias"),
                     "antecedentes" to result.getString("antecedentes"),
                     "fechaCreacion" to result.getTimestamp("fecha_creacion")?.toLocalDateTime()?.toString()
@@ -1548,6 +1937,59 @@ object ClinicalRepository {
         }
 
         return notes
+    }
+
+    private fun findClinicalImages(connection: Connection, patientId: Int): List<Map<String, Any?>> {
+        val sql = """
+            SELECT id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
+            FROM imagenes_clinicas
+            WHERE paciente_id = ?
+            ORDER BY fecha_subida DESC
+        """.trimIndent()
+        val images = mutableListOf<Map<String, Any?>>()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, patientId)
+
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    images.add(mapClinicalImage(result))
+                }
+            }
+        }
+
+        return images
+    }
+
+    private fun findClinicalImageById(connection: Connection, imageId: Int): Map<String, Any?> {
+        val sql = """
+            SELECT id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
+            FROM imagenes_clinicas
+            WHERE id = ?
+            LIMIT 1
+        """.trimIndent()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, imageId)
+
+            statement.executeQuery().use { result ->
+                if (result.next()) return mapClinicalImage(result)
+            }
+        }
+
+        error("No fue posible recuperar la imagen registrada.")
+    }
+
+    private fun mapClinicalImage(result: java.sql.ResultSet): Map<String, Any?> {
+        return mapOf(
+            "id" to result.getInt("id"),
+            "tipo" to result.getString("tipo"),
+            "descripcion" to result.getString("descripcion"),
+            "nombreOriginal" to result.getString("nombre_original"),
+            "contentType" to result.getString("content_type"),
+            "url" to result.getString("url_publica"),
+            "fechaSubida" to result.getTimestamp("fecha_subida")?.toLocalDateTime()?.toString()
+        )
     }
 
     private fun findOdontogram(connection: Connection, patientId: Int): List<Map<String, Any?>> {
@@ -1769,6 +2211,9 @@ fun requirePatientOwnerOrRoles(ctx: Context, patientId: Int, vararg roles: Strin
 fun main(args: Array<String>) {
     val port = AppConfig.getInt("SERVER_PORT", 8080)
     val publicDirectory = AppConfig.get("STATIC_FILES_DIR", "public")
+    val uploadsDirectory = AppConfig.get("UPLOADS_DIR", "uploads")
+
+    File(uploadsDirectory).mkdirs()
 
     val app = Javalin.create { config ->
         // Sirve los archivos HTML/CSS/JS desde la carpeta public.
@@ -1777,9 +2222,14 @@ fun main(args: Array<String>) {
             staticFiles.directory = publicDirectory
             staticFiles.location = Location.EXTERNAL
         }
+        config.staticFiles.add { staticFiles ->
+            staticFiles.hostedPath = "/uploads"
+            staticFiles.directory = uploadsDirectory
+            staticFiles.location = Location.EXTERNAL
+        }
     }
 
-    // Rutas del portal publico y recepcion.
+    // Rutas del portal público y recepción.
     app.post("/api/pacientes/registro") { ctx -> registerPatient(ctx) }
     app.post("/api/pacientes") { ctx -> registerPatient(ctx) }
     app.get("/api/pacientes") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION", "ODONTOLOGO")) listPatients(ctx) }
@@ -1812,6 +2262,7 @@ fun main(args: Array<String>) {
     app.post("/api/citas") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) createAppointment(ctx) }
     app.get("/api/citas") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listAppointments(ctx) }
     app.get("/api/citas/disponibilidad") { ctx -> getAppointmentAvailability(ctx) }
+    app.get("/api/odontologos") { ctx -> listDentists(ctx) }
     app.get("/api/citas/hoy") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listTodayAppointments(ctx) }
     app.post("/api/citas/agendar") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) scheduleAppointment(ctx) }
     app.put("/api/citas/{id}/estatus") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) updateAppointmentStatus(ctx) }
@@ -1823,8 +2274,10 @@ fun main(args: Array<String>) {
     app.get("/api/pagos") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listPayments(ctx) }
     app.post("/api/pagos") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) createPayment(ctx) }
     app.get("/api/reportes/recepcion") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) getReceptionReport(ctx) }
-    app.get("/api/horarios-atencion") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listBusinessHours(ctx) }
+    app.get("/api/horarios-atencion") { ctx -> listBusinessHours(ctx) }
     app.put("/api/horarios-atencion") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) updateBusinessHours(ctx) }
+    app.get("/api/odontologos/{id}/horarios") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION", "ODONTOLOGO")) listDentistHours(ctx) }
+    app.put("/api/odontologos/{id}/horarios") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION", "ODONTOLOGO")) updateDentistHours(ctx) }
     app.get("/api/dias-feriados") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listHolidays(ctx) }
     app.post("/api/dias-feriados") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) createHoliday(ctx) }
     app.delete("/api/dias-feriados/{id}") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) deleteHoliday(ctx) }
@@ -1841,6 +2294,7 @@ fun main(args: Array<String>) {
     app.put("/api/pacientes/{id}/expediente") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) updateClinicalFile(ctx) }
     app.put("/api/odontograma/{odontogramaId}/pieza/{numeroPieza}") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) updateOdontogramPiece(ctx) }
     app.post("/api/pacientes/{id}/notas") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) addClinicalNote(ctx) }
+    app.post("/api/pacientes/{id}/imagenes") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) uploadClinicalImage(ctx) }
 
     // Rutas de apoyo para pruebas locales.
     app.get("/api/health/db") { ctx -> checkDatabaseHealth(ctx) }
@@ -2168,6 +2622,7 @@ fun listAppointments(ctx: Context) {
 fun getAppointmentAvailability(ctx: Context) {
     val requestedDate = ctx.queryParam("fecha")?.trim()
     val excludedAppointmentId = ctx.queryParam("excluirCitaId")?.toIntOrNull()
+    val odontologistId = ctx.queryParam("odontologoId")?.toIntOrNull()?.takeIf { it > 0 }
 
     if (requestedDate.isNullOrBlank()) {
         return badRequest(ctx, "La fecha es obligatoria.")
@@ -2182,9 +2637,14 @@ fun getAppointmentAvailability(ctx: Context) {
     ctx.json(
         mapOf(
             "fecha" to appointmentDate.toString(),
-            "horarios" to AppointmentRepository.availability(appointmentDate, excludedAppointmentId)
+            "odontologoId" to odontologistId,
+            "horarios" to AppointmentRepository.availability(appointmentDate, excludedAppointmentId, odontologistId)
         )
     )
+}
+
+fun listDentists(ctx: Context) {
+    ctx.json(DentistRepository.listActive())
 }
 
 // POST /api/citas/agendar: endpoint inicial usado por el portal publico.
@@ -2259,6 +2719,43 @@ fun updateBusinessHours(ctx: Context) {
     }
 }
 
+fun listDentistHours(ctx: Context) {
+    val odontologistId = ctx.pathParam("id").toIntOrNull()
+
+    if (odontologistId == null || odontologistId <= 0) {
+        return badRequest(ctx, "El id del odontologo debe ser numerico.")
+    }
+
+    ctx.json(
+        mapOf(
+            "odontologoId" to odontologistId,
+            "horarios" to DentistHoursRepository.list(odontologistId)
+        )
+    )
+}
+
+fun updateDentistHours(ctx: Context) {
+    val odontologistId = ctx.pathParam("id").toIntOrNull()
+    val request = ctx.bodyAsClass(ActualizarHorariosAtencionRequest::class.java)
+
+    if (odontologistId == null || odontologistId <= 0) {
+        return badRequest(ctx, "El id del odontologo debe ser numerico.")
+    }
+
+    try {
+        DentistHoursRepository.update(odontologistId, request.horarios)
+        ctx.json(
+            mapOf(
+                "odontologoId" to odontologistId,
+                "mensaje" to "Horarios del odontologo actualizados correctamente.",
+                "horarios" to DentistHoursRepository.list(odontologistId)
+            )
+        )
+    } catch (error: IllegalArgumentException) {
+        badRequest(ctx, error.message ?: "Configuracion de horarios invalida.")
+    }
+}
+
 // GET /api/dias-feriados: lista cierres especiales configurados.
 fun listHolidays(ctx: Context) {
     ctx.json(HolidayRepository.list())
@@ -2311,8 +2808,8 @@ fun deleteHoliday(ctx: Context) {
 fun createAppointment(ctx: Context) {
     val request = ctx.bodyAsClass(CrearCitaRequest::class.java)
 
-    if (request.pacienteId <= 0 || request.fechaHora.isBlank() || request.motivo.isBlank()) {
-        return badRequest(ctx, "Paciente, fechaHora y motivo son obligatorios.")
+    if (request.pacienteId <= 0 || request.odontologoId <= 0 || request.fechaHora.isBlank() || request.motivo.isBlank()) {
+        return badRequest(ctx, "Paciente, odontologo, fechaHora y motivo son obligatorios.")
     }
 
     try {
@@ -2400,13 +2897,22 @@ fun listAppointmentRequests(ctx: Context) {
 // PUT /api/solicitudes-cita/{id}/aceptar: convierte la solicitud en cita confirmada.
 fun acceptAppointmentRequest(ctx: Context) {
     val requestId = ctx.pathParam("id").toIntOrNull()
+    val request = if (ctx.body().isBlank()) {
+        AceptarSolicitudCitaRequest()
+    } else {
+        ctx.bodyAsClass(AceptarSolicitudCitaRequest::class.java)
+    }
 
     if (requestId == null || requestId <= 0) {
         return badRequest(ctx, "El id de la solicitud debe ser numerico.")
     }
 
+    if (request.odontologoId <= 0) {
+        return badRequest(ctx, "Selecciona un odontologo para aceptar la solicitud.")
+    }
+
     try {
-        val appointmentId = AppointmentRequestRepository.accept(requestId)
+        val appointmentId = AppointmentRequestRepository.accept(requestId, request.odontologoId)
         ctx.json(
             mapOf(
                 "id" to requestId,
@@ -2571,6 +3077,68 @@ fun addClinicalNote(ctx: Context) {
     }
 }
 
+// POST /api/pacientes/{id}/imagenes: sube radiografias o imagenes clinicas al expediente.
+fun uploadClinicalImage(ctx: Context) {
+    val patientId = ctx.pathParam("id").toIntOrNull()
+    val uploadedFile = ctx.uploadedFile("imagen")
+
+    if (patientId == null || patientId <= 0) {
+        return badRequest(ctx, "El id del paciente debe ser numerico.")
+    }
+
+    if (uploadedFile == null) {
+        return badRequest(ctx, "Selecciona una imagen o archivo PDF.")
+    }
+
+    val contentType = uploadedFile.contentType() ?: "application/octet-stream"
+    val maxBytes = AppConfig.getInt("MAX_CLINICAL_IMAGE_MB", 15) * 1024L * 1024L
+
+    if (!isAllowedClinicalFile(contentType, uploadedFile.filename())) {
+        return badRequest(ctx, "Formato no permitido. Usa JPG, PNG, WebP o PDF.")
+    }
+
+    if (uploadedFile.size() > maxBytes) {
+        return badRequest(ctx, "El archivo supera el limite configurado.")
+    }
+
+    val uploadsRoot = AppConfig.get("CLINICAL_IMAGES_DIR", "uploads/clinical-images")
+    val publicRoot = AppConfig.get("CLINICAL_IMAGES_PUBLIC_PATH", "/uploads/clinical-images").trimEnd('/')
+    val patientDirectory = File(uploadsRoot, "paciente-$patientId")
+    patientDirectory.mkdirs()
+
+    val extension = safeFileExtension(uploadedFile.filename(), contentType)
+    val storedName = "imagen-${System.currentTimeMillis()}-${UUID.randomUUID()}$extension"
+    val targetFile = File(patientDirectory, storedName)
+
+    uploadedFile.content().use { input ->
+        targetFile.outputStream().use { output -> input.copyTo(output) }
+    }
+
+    try {
+        val image = ClinicalRepository.addClinicalImage(
+            patientId = patientId,
+            type = ctx.formParam("tipo") ?: "IMAGEN",
+            description = ctx.formParam("descripcion"),
+            originalName = uploadedFile.filename(),
+            storedName = storedName,
+            contentType = contentType,
+            filePath = targetFile.path,
+            publicUrl = "$publicRoot/paciente-$patientId/$storedName"
+        )
+
+        ctx.status(HttpStatus.CREATED).json(
+            mapOf(
+                "pacienteId" to patientId,
+                "imagen" to image,
+                "mensaje" to "Imagen clinica registrada correctamente."
+            )
+        )
+    } catch (error: PatientNotFoundException) {
+        targetFile.delete()
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    }
+}
+
 // Respuesta comun para validaciones de entrada.
 fun badRequest(ctx: Context, message: String) {
     ctx.status(HttpStatus.BAD_REQUEST).json(ApiError(message))
@@ -2641,6 +3209,28 @@ fun splitSqlStatements(sql: String): List<String> {
     return sql.split(";")
         .map { it.trim() }
         .filter { it.isNotBlank() }
+}
+
+fun isAllowedClinicalFile(contentType: String, filename: String): Boolean {
+    val normalizedType = contentType.lowercase()
+    val extension = filename.substringAfterLast('.', "").lowercase()
+    val allowedTypes = setOf("image/jpeg", "image/png", "image/webp", "application/pdf")
+    val allowedExtensions = setOf("jpg", "jpeg", "png", "webp", "pdf")
+
+    return normalizedType in allowedTypes || extension in allowedExtensions
+}
+
+fun safeFileExtension(filename: String, contentType: String): String {
+    val extension = filename.substringAfterLast('.', "").lowercase()
+
+    return when {
+        extension in setOf("jpg", "jpeg", "png", "webp", "pdf") -> ".$extension"
+        contentType.equals("image/jpeg", ignoreCase = true) -> ".jpg"
+        contentType.equals("image/png", ignoreCase = true) -> ".png"
+        contentType.equals("image/webp", ignoreCase = true) -> ".webp"
+        contentType.equals("application/pdf", ignoreCase = true) -> ".pdf"
+        else -> ".bin"
+    }
 }
 
 // Helpers de formato y normalizacion usados por controladores y repositorios.

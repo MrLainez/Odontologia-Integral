@@ -29,11 +29,17 @@ const agendaDateInput = document.querySelector("#agenda-date");
 const businessHoursForm = document.querySelector("#business-hours-form");
 const businessHoursList = document.querySelector("#business-hours-list");
 const businessHoursStatus = document.querySelector("#business-hours-status");
+const dentistHoursForm = document.querySelector("#dentist-hours-form");
+const dentistHoursSelect = document.querySelector("#dentist-hours-dentist");
+const dentistHoursList = document.querySelector("#dentist-hours-list");
+const dentistHoursStatus = document.querySelector("#dentist-hours-status");
 const holidayForm = document.querySelector("#holiday-form");
 const holidayList = document.querySelector("#holiday-list");
 const holidayStatus = document.querySelector("#holiday-status");
 const appointmentRequestsList = document.querySelector("#appointment-requests-list");
 const appointmentRequestsStatus = document.querySelector("#appointment-requests-status");
+const manualDentistSelect = document.querySelector("#manual-dentist");
+const manualAvailabilityStatus = document.querySelector("#manual-availability-status");
 
 // Endpoints usados por el panel de recepcion.
 const API_BASE_URL = window.location.origin;
@@ -45,6 +51,9 @@ const API_RECEPTION_REPORT_URL = `${API_BASE_URL}/api/reportes/recepcion`;
 const API_BUSINESS_HOURS_URL = `${API_BASE_URL}/api/horarios-atencion`;
 const API_HOLIDAYS_URL = `${API_BASE_URL}/api/dias-feriados`;
 const API_APPOINTMENT_REQUESTS_URL = `${API_BASE_URL}/api/solicitudes-cita`;
+const API_DENTISTS_URL = `${API_BASE_URL}/api/odontologos`;
+const API_AVAILABILITY_URL = `${API_BASE_URL}/api/citas/disponibilidad`;
+const API_DENTIST_HOURS_URL = (dentistId) => `${API_BASE_URL}/api/odontologos/${dentistId}/horarios`;
 
 // Proteccion simple de pantalla: requiere sesion administrativa local.
 const adminSession = JSON.parse(localStorage.getItem("adminSession") || "null");
@@ -66,6 +75,7 @@ if (adminSession?.rol !== "ADMIN") {
 // Evita registrar citas manuales en fechas pasadas.
 const today = new Date();
 const manualDateInput = document.querySelector("#inputFechaHora");
+let dentists = [];
 
 if (manualDateInput) {
   manualDateInput.min = today.toISOString().slice(0, 16);
@@ -210,6 +220,7 @@ function normalizeAppointment(appointment) {
       || appointment.paciente
       || `Paciente #${appointment.pacienteId || appointment.paciente_id || "-"}`,
     treatment: appointment.tratamiento || appointment.motivo || "Consulta",
+    dentist: appointment.odontologoNombre || appointment.odontologo || "Por asignar",
     status: normalizeStatus(appointment.estatus || appointment.status)
   };
 }
@@ -234,7 +245,10 @@ function createAppointmentRow(appointment) {
   row.innerHTML = `
     <span class="appointment-row__time" role="cell">${escapeHtml(normalized.time)}</span>
     <span role="cell">${escapeHtml(normalized.patient)}</span>
-    <span role="cell">${escapeHtml(normalized.treatment)}</span>
+    <span role="cell">
+      ${escapeHtml(normalized.treatment)}
+      <small class="cell-meta">${escapeHtml(normalized.dentist)}</small>
+    </span>
     <span role="cell"><span class="reception-badge" data-status-badge>${config.label}</span></span>
     <div class="status-actions" role="cell">
       ${createStatusButtons()}
@@ -303,6 +317,109 @@ async function fetchJson(url, options = {}) {
   }
 
   return data;
+}
+
+function createDentistOptions(selectedId = "", includeEmpty = true) {
+  const selected = String(selectedId || "");
+  const firstOption = includeEmpty ? '<option value="">Selecciona odontólogo</option>' : "";
+  const options = dentists.map((dentist) => {
+    const value = String(dentist.id);
+    return `<option value="${escapeHtml(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(dentist.nombre)}</option>`;
+  });
+
+  return `${firstOption}${options.join("")}`;
+}
+
+function renderManualDentists() {
+  if (!manualDentistSelect) return;
+
+  manualDentistSelect.innerHTML = createDentistOptions(manualDentistSelect.value);
+}
+
+function renderDentistHoursSelect() {
+  if (!dentistHoursSelect) return;
+
+  dentistHoursSelect.innerHTML = createDentistOptions(dentistHoursSelect.value);
+}
+
+async function loadDentists() {
+  try {
+    dentists = await fetchJson(API_DENTISTS_URL);
+    renderManualDentists();
+    renderDentistHoursSelect();
+  } catch (error) {
+    dentists = [];
+    if (manualDentistSelect) {
+      manualDentistSelect.innerHTML = '<option value="">No se pudieron cargar odontólogos</option>';
+    }
+    if (dentistHoursSelect) {
+      dentistHoursSelect.innerHTML = '<option value="">No se pudieron cargar odontólogos</option>';
+    }
+  }
+}
+
+async function checkDentistAvailability(date, time, dentistId) {
+  if (!date || !time || !dentistId) return null;
+
+  const url = new URL(API_AVAILABILITY_URL);
+  url.searchParams.set("fecha", date);
+  url.searchParams.set("odontologoId", dentistId);
+
+  const availability = await fetchJson(url.toString());
+  const slot = (availability.horarios || []).find((item) => String(item.valor).slice(0, 5) === String(time).slice(0, 5));
+
+  return slot?.disponible === true;
+}
+
+async function updateRequestAvailability(row) {
+  if (!row) return;
+
+  const select = row.querySelector("[data-request-dentist]");
+  const status = row.querySelector("[data-request-availability]");
+  if (!select || !status) return;
+
+  status.classList.remove("is-error", "is-success");
+
+  if (!select.value) {
+    status.textContent = "Selecciona odontólogo";
+    return;
+  }
+
+  status.textContent = "Revisando disponibilidad...";
+
+  try {
+    const isAvailable = await checkDentistAvailability(row.dataset.requestDate, row.dataset.requestTime, select.value);
+    status.textContent = isAvailable ? "Horario libre para este odontólogo" : "Horario ocupado para este odontólogo";
+    status.classList.toggle("is-success", isAvailable);
+    status.classList.toggle("is-error", !isAvailable);
+  } catch (error) {
+    status.textContent = "No se pudo verificar disponibilidad";
+    status.classList.add("is-error");
+  }
+}
+
+async function updateManualAvailability() {
+  if (!manualAvailabilityStatus || !manualDateInput || !manualDentistSelect) return;
+
+  manualAvailabilityStatus.classList.remove("is-error", "is-success");
+
+  if (!manualDateInput.value || !manualDentistSelect.value) {
+    manualAvailabilityStatus.textContent = "Selecciona fecha y odontólogo.";
+    return;
+  }
+
+  const [date, time] = manualDateInput.value.split("T");
+  manualAvailabilityStatus.textContent = "Revisando disponibilidad...";
+
+  try {
+    const isAvailable = await checkDentistAvailability(date, time, manualDentistSelect.value);
+    manualAvailabilityStatus.textContent = isAvailable ? "Horario libre para este odontólogo." : "Horario ocupado para este odontólogo.";
+    manualAvailabilityStatus.classList.toggle("is-success", isAvailable);
+    manualAvailabilityStatus.classList.toggle("is-error", !isAvailable);
+  } catch (error) {
+    manualAvailabilityStatus.textContent = "No se pudo verificar disponibilidad.";
+    manualAvailabilityStatus.classList.add("is-error");
+  }
 }
 
 // Carga las citas del dia desde el backend y las pinta en la tabla.
@@ -376,23 +493,43 @@ function renderAppointmentRequests(requests) {
     const row = document.createElement("article");
     row.className = "record-row";
     row.dataset.requestId = request.id;
+    row.dataset.requestDate = request.fecha;
+    row.dataset.requestTime = String(request.hora).slice(0, 5);
     row.innerHTML = `
       <div>
         <strong>${escapeHtml(request.pacienteNombre)} - ${formatDateOnly(request.fecha)} ${escapeHtml(String(request.hora).slice(0, 5))}</strong>
         <span>${escapeHtml(request.motivo || "Solicitud de cita")}</span>
+        <label class="inline-select-label">
+          Asignar odontólogo
+          <select data-request-dentist>
+            ${createDentistOptions(request.odontologoId || "", true)}
+          </select>
+        </label>
+        <span class="availability-status" data-request-availability>Selecciona odontólogo</span>
+        <span>Odontólogo: ${escapeHtml(request.odontologoNombre || "Sin preferencia")}</span>
       </div>
       <div class="record-actions">
         <button type="button" class="button button--secondary" data-accept-request>Aceptar</button>
         <button type="button" class="button button--danger" data-reject-request>Rechazar</button>
       </div>
     `;
+    [...row.querySelectorAll("span")]
+      .find((span) => span.textContent.trim().startsWith("Odont"))
+      ?.remove();
     appointmentRequestsList.append(row);
+    updateRequestAvailability(row);
   });
 }
 
-async function acceptAppointmentRequest(requestId) {
+async function acceptAppointmentRequest(requestId, odontologoId) {
   return fetchJson(`${API_APPOINTMENT_REQUESTS_URL}/${requestId}/aceptar`, {
-    method: "PUT"
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      odontologoId: Number(odontologoId)
+    })
   });
 }
 
@@ -512,8 +649,8 @@ async function loadBusinessHours() {
   }
 }
 
-function renderBusinessHours(schedules) {
-  businessHoursList.innerHTML = "";
+function renderBusinessHours(schedules, container = businessHoursList) {
+  container.innerHTML = "";
 
   schedules.forEach((schedule) => {
     const row = document.createElement("article");
@@ -539,12 +676,12 @@ function renderBusinessHours(schedules) {
         </label>
       </div>
     `;
-    businessHoursList.append(row);
+    container.append(row);
   });
 }
 
-function buildBusinessHoursPayload() {
-  const horarios = [...businessHoursList.querySelectorAll(".business-hours-row")].map((row) => {
+function buildBusinessHoursPayload(container = businessHoursList) {
+  const horarios = [...container.querySelectorAll(".business-hours-row")].map((row) => {
     const day = Number(row.dataset.day);
     return {
       diaSemana: day,
@@ -555,6 +692,64 @@ function buildBusinessHoursPayload() {
   });
 
   return { horarios };
+}
+
+async function loadDentistHours() {
+  if (!dentistHoursList || !dentistHoursSelect) return;
+
+  dentistHoursStatus.classList.remove("is-error");
+
+  if (!dentistHoursSelect.value) {
+    dentistHoursList.innerHTML = "";
+    dentistHoursStatus.textContent = "Selecciona un odontólogo para revisar su disponibilidad.";
+    return;
+  }
+
+  dentistHoursStatus.textContent = "Cargando horarios del odontólogo...";
+
+  try {
+    const data = await fetchJson(API_DENTIST_HOURS_URL(dentistHoursSelect.value));
+    renderBusinessHours(data.horarios || [], dentistHoursList);
+    dentistHoursStatus.textContent = data.horarios?.some((schedule) => schedule.heredado)
+      ? "Este odontólogo hereda el horario general hasta que guardes cambios propios."
+      : "";
+  } catch (error) {
+    dentistHoursList.innerHTML = "";
+    dentistHoursStatus.textContent = error.message || "No fue posible cargar horarios del odontólogo.";
+    dentistHoursStatus.classList.add("is-error");
+  }
+}
+
+async function saveDentistHours(event) {
+  event.preventDefault();
+
+  dentistHoursStatus.classList.remove("is-error");
+
+  if (!dentistHoursSelect.value) {
+    dentistHoursStatus.textContent = "Selecciona un odontólogo.";
+    dentistHoursStatus.classList.add("is-error");
+    return;
+  }
+
+  dentistHoursStatus.textContent = "Guardando horario del odontólogo...";
+
+  try {
+    const data = await fetchJson(API_DENTIST_HOURS_URL(dentistHoursSelect.value), {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(buildBusinessHoursPayload(dentistHoursList))
+    });
+
+    renderBusinessHours(data.horarios || [], dentistHoursList);
+    dentistHoursStatus.textContent = "Horario del odontólogo actualizado correctamente.";
+    await loadAppointmentRequests();
+    await loadTodayAgenda();
+  } catch (error) {
+    dentistHoursStatus.textContent = error.message || "No fue posible guardar el horario del odontólogo.";
+    dentistHoursStatus.classList.add("is-error");
+  }
 }
 
 async function saveBusinessHours(event) {
@@ -700,6 +895,7 @@ async function saveAppointmentStatus(appointmentId, status) {
 function openManualModal() {
   manualModal.classList.remove("is-hidden");
   document.body.classList.add("has-dialog");
+  renderManualDentists();
   document.querySelector("#manual-name")?.focus();
 }
 
@@ -708,6 +904,10 @@ function closeManualModal() {
   document.body.classList.remove("has-dialog");
   manualForm.reset();
   manualStatus.textContent = "";
+  if (manualAvailabilityStatus) {
+    manualAvailabilityStatus.classList.remove("is-error", "is-success");
+    manualAvailabilityStatus.textContent = "Selecciona fecha y odontólogo.";
+  }
 }
 
 // Abre/cierra modal de creacion de usuarios pacientes.
@@ -786,6 +986,7 @@ function buildManualAppointmentPayload(form) {
 
   return {
     pacienteId: Number(data.get("patientId")),
+    odontologoId: Number(data.get("odontologoId")),
     fechaHora: data.get("dateTime"),
     motivo: data.get("reason").trim()
   };
@@ -877,7 +1078,7 @@ function addPatientRow(patient, prepend = false) {
       <span class="${isActive ? "status-pill" : "muted-label"}">${isActive ? "Activo" : "Inactivo"}</span>
       ${isActive ? `
         <button type="button" class="button button--secondary" data-edit-patient>Editar</button>
-        <button type="button" class="button button--secondary" data-reset-patient-password>Contrasena</button>
+        <button type="button" class="button button--secondary" data-reset-patient-password>Contraseña</button>
         <button type="button" class="button button--danger" data-delete-patient>Eliminar</button>
       ` : ""}
     </div>
@@ -966,7 +1167,7 @@ function addAdminUserRow(user) {
     <div class="record-actions">
       <span class="${isActive ? "status-pill" : "muted-label"}">${isActive ? "Activo" : "Inactivo"}</span>
       ${isActive ? `
-        <button type="button" class="button button--secondary" data-reset-admin-password>Contrasena</button>
+        <button type="button" class="button button--secondary" data-reset-admin-password>Contraseña</button>
         <button type="button" class="button button--danger" data-delete-admin-user>Eliminar</button>
       ` : ""}
     </div>
@@ -1132,8 +1333,24 @@ if (agendaDateInput) {
   agendaDateInput.addEventListener("change", loadTodayAgenda);
 }
 
+if (manualDateInput) {
+  manualDateInput.addEventListener("change", updateManualAvailability);
+}
+
+if (manualDentistSelect) {
+  manualDentistSelect.addEventListener("change", updateManualAvailability);
+}
+
 if (businessHoursForm) {
   businessHoursForm.addEventListener("submit", saveBusinessHours);
+}
+
+if (dentistHoursSelect) {
+  dentistHoursSelect.addEventListener("change", loadDentistHours);
+}
+
+if (dentistHoursForm) {
+  dentistHoursForm.addEventListener("submit", saveDentistHours);
 }
 
 if (holidayForm) {
@@ -1164,19 +1381,38 @@ if (holidayList) {
 }
 
 if (appointmentRequestsList) {
+  appointmentRequestsList.addEventListener("change", (event) => {
+    if (!event.target.matches("[data-request-dentist]")) return;
+
+    const row = event.target.closest("[data-request-id]");
+    updateRequestAvailability(row);
+  });
+
   appointmentRequestsList.addEventListener("click", async (event) => {
+    const acceptButton = event.target.closest("[data-accept-request]");
+    const rejectButton = event.target.closest("[data-reject-request]");
+    if (!acceptButton && !rejectButton) return;
+
     const row = event.target.closest("[data-request-id]");
     if (!row) return;
 
     const requestId = row.dataset.requestId;
 
     try {
-      if (event.target.closest("[data-accept-request]")) {
-        await acceptAppointmentRequest(requestId);
+      if (acceptButton) {
+        const dentistSelect = row.querySelector("[data-request-dentist]");
+
+        if (!dentistSelect?.value) {
+          appointmentRequestsStatus.textContent = "Selecciona un odontólogo antes de aceptar la solicitud.";
+          appointmentRequestsStatus.classList.add("is-error");
+          return;
+        }
+
+        await acceptAppointmentRequest(requestId, dentistSelect.value);
         appointmentRequestsStatus.textContent = "Solicitud aceptada y cita creada.";
       }
 
-      if (event.target.closest("[data-reject-request]")) {
+      if (rejectButton) {
         const confirmed = window.confirm("Deseas rechazar esta solicitud de cita?");
         if (!confirmed) return;
 
@@ -1239,19 +1475,19 @@ patientsList.addEventListener("click", async (event) => {
   }
 
   if (event.target.closest("[data-reset-patient-password]")) {
-    const newPassword = window.prompt("Nueva contrasena temporal para este paciente:");
+    const newPassword = window.prompt("Nueva contraseña temporal para este paciente:");
 
     if (!newPassword) return;
     if (newPassword.length < 6) {
-      alert("La contrasena debe tener al menos 6 caracteres.");
+      alert("La contraseña debe tener al menos 6 caracteres.");
       return;
     }
 
     try {
       await resetPatientPassword(patientId, newPassword);
-      alert("Contrasena del paciente actualizada correctamente.");
+      alert("Contraseña del paciente actualizada correctamente.");
     } catch (error) {
-      alert(error.message || "No fue posible actualizar la contrasena.");
+      alert(error.message || "No fue posible actualizar la contraseña.");
     }
   }
 
@@ -1285,7 +1521,7 @@ if (adminUserForm) {
     const submitButton = adminUserForm.querySelector("button[type='submit']");
 
     if (!payload.nombre || !payload.email || payload.password.length < 6 || !payload.rol) {
-      adminUserStatus.textContent = "Completa nombre, correo, rol y una contrasena de al menos 6 caracteres.";
+      adminUserStatus.textContent = "Completa nombre, correo, rol y una contraseña de al menos 6 caracteres.";
       adminUserStatus.classList.add("is-error");
       return;
     }
@@ -1298,6 +1534,10 @@ if (adminUserForm) {
       await createAdminUser(payload);
       clearAdminUsers();
       await loadAdminUsers();
+      if (payload.rol === "ODONTOLOGO") {
+        await loadDentists();
+        await loadAppointmentRequests();
+      }
       adminUserForm.reset();
       adminUserStatus.textContent = "Usuario interno creado correctamente.";
     } catch (error) {
@@ -1315,19 +1555,19 @@ if (adminUserForm) {
     const userId = row.dataset.adminUserId;
 
     if (event.target.closest("[data-reset-admin-password]")) {
-      const newPassword = window.prompt("Nueva contrasena temporal para este usuario:");
+      const newPassword = window.prompt("Nueva contraseña temporal para este usuario:");
 
       if (!newPassword) return;
       if (newPassword.length < 6) {
-        alert("La contrasena debe tener al menos 6 caracteres.");
+        alert("La contraseña debe tener al menos 6 caracteres.");
         return;
       }
 
       try {
         await resetAdminPassword(userId, newPassword);
-        alert("Contrasena actualizada correctamente.");
+        alert("Contraseña actualizada correctamente.");
       } catch (error) {
-        alert(error.message || "No fue posible actualizar la contrasena.");
+        alert(error.message || "No fue posible actualizar la contraseña.");
       }
     }
 
@@ -1373,7 +1613,13 @@ document.addEventListener("keydown", (event) => {
 
 // Validacion en vivo de formularios.
 manualForm.addEventListener("input", (event) => {
-  if (event.target.matches("input")) {
+  if (event.target.matches("input, select")) {
+    validateManualField(event.target);
+  }
+});
+
+manualForm.addEventListener("change", (event) => {
+  if (event.target.matches("select")) {
     validateManualField(event.target);
   }
 });
@@ -1439,7 +1685,10 @@ userForm.addEventListener("submit", async (event) => {
 
 // Al entrar al panel se carga la agenda desde la API.
 document.addEventListener("DOMContentLoaded", loadTodayAgenda);
-document.addEventListener("DOMContentLoaded", loadAppointmentRequests);
+document.addEventListener("DOMContentLoaded", async () => {
+  await loadDentists();
+  await loadAppointmentRequests();
+});
 document.addEventListener("DOMContentLoaded", loadPatients);
 document.addEventListener("DOMContentLoaded", loadPayments);
 document.addEventListener("DOMContentLoaded", loadAdminUsers);

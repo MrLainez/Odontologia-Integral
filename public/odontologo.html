@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Modulo odontologico de expediente clinico.">
   <title>Expediente Clinico | Odontologia Integral</title>
-  <link rel="stylesheet" href="styles.css?v=20260627-4">
+  <link rel="stylesheet" href="styles.css?v=20260630-2">
 </head>
 <body>
   <main class="dentist-shell">
@@ -68,6 +68,49 @@
         <div class="odontogram-grid" id="odontogram-grid" aria-label="Piezas dentales adultas"></div>
       </article>
 
+      <!-- Imagenologia: radiografias, fotografias intraorales y documentos visuales. -->
+      <article class="clinical-panel media-panel" aria-labelledby="media-title">
+        <div class="panel__header">
+          <div>
+            <p class="eyebrow">Imagenologia</p>
+            <h2 id="media-title">Radiografias e imagenes</h2>
+          </div>
+          <span class="muted-label">JPG, PNG, WebP, PDF</span>
+        </div>
+
+        <form class="clinical-image-form" id="clinical-image-form" enctype="multipart/form-data" novalidate>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="clinical-image-type">Tipo</label>
+              <select id="clinical-image-type" name="tipo">
+                <option value="RADIOGRAFIA">Radiografia</option>
+                <option value="FOTOGRAFIA">Fotografia clinica</option>
+                <option value="DOCUMENTO">Documento visual</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <label for="clinical-image-file">Archivo</label>
+              <input id="clinical-image-file" name="imagen" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label for="clinical-image-description">Descripcion</label>
+            <input id="clinical-image-description" name="descripcion" type="text" placeholder="Ej. Panoramica inicial, lateral derecha">
+          </div>
+
+          <button class="button button--secondary" type="submit">Subir Imagen</button>
+          <p class="form-status" id="image-status" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="clinical-image-list" id="clinical-image-list" aria-label="Imagenes clinicas registradas">
+          <article class="clinical-image-item">
+            <p>Selecciona un paciente para ver sus imagenes.</p>
+          </article>
+        </div>
+      </article>
+
       <!-- RF10: notas de evolucion con registro inmutable simulado. -->
       <aside class="clinical-panel history-panel" aria-labelledby="history-title">
         <div class="panel__header">
@@ -82,6 +125,21 @@
           <div class="form-row">
             <label for="clinical-age">Edad</label>
             <input id="clinical-age" name="edad" type="number" min="0" max="120" placeholder="No registrada">
+          </div>
+
+          <div class="form-row">
+            <label for="clinical-blood-type">Grupo sanguíneo</label>
+            <select id="clinical-blood-type" name="grupoSanguineo">
+              <option value="">No registrado</option>
+              <option value="O+">O+</option>
+              <option value="O-">O-</option>
+              <option value="A+">A+</option>
+              <option value="A-">A-</option>
+              <option value="B+">B+</option>
+              <option value="B-">B-</option>
+              <option value="AB+">AB+</option>
+              <option value="AB-">AB-</option>
+            </select>
           </div>
 
           <div class="form-row">
@@ -105,12 +163,7 @@
         <button class="button button--primary" id="add-note" type="button">Agregar Nota</button>
         <p class="form-status" id="note-status" role="status" aria-live="polite"></p>
 
-        <div class="note-list" id="note-list" aria-label="Notas registradas">
-          <article class="note-item">
-            <time>18/06/2026 09:15</time>
-            <p>Paciente refiere sensibilidad leve en molar superior derecho. Se indica vigilancia.</p>
-          </article>
-        </div>
+        <div class="note-list" id="note-list" aria-label="Notas registradas"></div>
       </aside>
     </section>
   </main>
@@ -123,6 +176,6 @@
     <button type="button" data-tooth-status="extraction">Extraccion</button>
   </div>
 
-  <script src="odontologo.js?v=20260627-5"></script>
+  <script src="odontologo.js?v=20260630-3"></script>
 </body>
 </html>

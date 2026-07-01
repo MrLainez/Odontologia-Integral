@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Agenda una nueva cita en el portal de pacientes de Odontologia Integral.">
   <title>Agendar Nueva Cita | Odontologia Integral</title>
-  <link rel="stylesheet" href="styles.css?v=20260627-4">
+  <link rel="stylesheet" href="styles.css?v=20260627-8">
 </head>
 <body>
   <main class="app-shell schedule-shell">
@@ -33,8 +33,12 @@
       <section class="calendar-panel" aria-label="Calendario de disponibilidad">
         <div class="calendar-toolbar">
           <div>
-            <span class="muted-label">Mes actual</span>
+            <span class="muted-label">Mes visible</span>
             <h2 id="current-month">Calendario</h2>
+          </div>
+          <div class="calendar-nav" aria-label="Cambiar mes del calendario">
+            <button class="button button--secondary" id="previous-month" type="button">Anterior</button>
+            <button class="button button--secondary" id="next-month" type="button">Siguiente</button>
           </div>
           <div class="calendar-legend" aria-label="Leyenda del calendario">
             <span><i class="legend-dot legend-dot--available"></i>Disponible</span>
@@ -72,10 +76,20 @@
             <dd id="summary-time">Sin seleccionar</dd>
           </div>
           <div>
-            <dt>Odontologo</dt>
-            <dd>Disponible por agenda</dd>
+            <dt>Odontólogo</dt>
+            <dd id="summary-dentist">Sin preferencia</dd>
           </div>
         </dl>
+        <div class="form-row">
+          <label for="preferred-dentist">Odontólogo preferido</label>
+          <select id="preferred-dentist">
+            <option value="">Sin preferencia</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="appointment-reason">Motivo breve</label>
+          <textarea id="appointment-reason" rows="3" placeholder="Ej. Revision, dolor, control o limpieza"></textarea>
+        </div>
         <p class="form-status" id="schedule-status" role="status" aria-live="polite"></p>
       </aside>
     </section>
@@ -95,6 +109,6 @@
     </div>
   </div>
 
-  <script src="agendar.js?v=20260627-3"></script>
+  <script src="agendar.js?v=20260630-4"></script>
 </body>
 </html>
