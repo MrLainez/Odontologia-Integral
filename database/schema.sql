@@ -190,3 +190,20 @@ CREATE TABLE IF NOT EXISTS dias_feriados (
   fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_dias_feriados_fecha (fecha)
 );
+
+CREATE TABLE IF NOT EXISTS auditoria (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  fecha_hora DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  actor_tipo VARCHAR(30) NOT NULL DEFAULT 'ANONIMO',
+  actor_id INT NULL,
+  actor_rol VARCHAR(30) NULL,
+  accion VARCHAR(80) NOT NULL,
+  recurso VARCHAR(160) NOT NULL,
+  ip VARCHAR(80) NULL,
+  metodo VARCHAR(12) NOT NULL,
+  ruta VARCHAR(255) NOT NULL,
+  detalles VARCHAR(500) NULL,
+  INDEX idx_auditoria_fecha (fecha_hora),
+  INDEX idx_auditoria_actor (actor_tipo, actor_id),
+  INDEX idx_auditoria_accion (accion)
+);

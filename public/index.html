@@ -67,7 +67,10 @@
             <span>Portal de Pacientes</span>
           </div>
         </div>
-        <button class="button button--secondary" id="logout-button" type="button">Salir</button>
+        <div class="header-actions">
+          <button class="button button--secondary" id="change-password-button" type="button">Cambiar contraseña</button>
+          <button class="button button--secondary" id="logout-button" type="button">Salir</button>
+        </div>
       </header>
 
       <div class="welcome-panel">
@@ -157,6 +160,31 @@
     </section>
   </div>
 
-  <script src="app.js?v=20260630-3"></script>
+  <div class="confirm-dialog is-hidden" id="password-dialog" role="dialog" aria-modal="true" aria-labelledby="password-dialog-title">
+    <div class="confirm-dialog__backdrop" data-close-password-dialog></div>
+    <section class="manual-modal">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Seguridad</p>
+          <h2 id="password-dialog-title">Cambiar contraseña</h2>
+        </div>
+        <button class="text-button" type="button" data-close-password-dialog>Cerrar</button>
+      </div>
+      <form id="password-form" novalidate>
+        <div class="form-row">
+          <label for="current-password">Contraseña actual</label>
+          <input id="current-password" name="passwordActual" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="form-row">
+          <label for="new-password">Nueva contraseña</label>
+          <input id="new-password" name="passwordNueva" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <button class="button button--primary" type="submit">Guardar contraseña</button>
+        <p class="form-status" id="password-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+
+  <script src="app.js?v=20260630-4"></script>
 </body>
 </html>

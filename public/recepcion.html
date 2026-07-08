@@ -29,6 +29,7 @@
         <a href="#reportes">Reportes</a>
       </nav>
 
+      <button class="button button--secondary" id="change-password-button" type="button">Cambiar contraseña</button>
       <button class="button button--secondary" id="admin-logout" type="button">Salir</button>
     </aside>
 
@@ -351,7 +352,7 @@
 
         <div class="form-row">
           <label for="user-password">Contraseña temporal</label>
-          <input id="user-password" name="password" type="password" placeholder="Minimo 6 caracteres" required>
+          <input id="user-password" name="password" type="password" placeholder="Minimo 8 caracteres, letras y numeros" required>
           <small class="field-error" data-error-for="user-password"></small>
         </div>
 
@@ -361,6 +362,46 @@
     </section>
   </div>
 
-  <script src="recepcion.js?v=20260630-4"></script>
+  <div class="confirm-dialog is-hidden" id="password-dialog" role="dialog" aria-modal="true" aria-labelledby="password-dialog-title">
+    <div class="confirm-dialog__backdrop" data-close-password-dialog></div>
+    <section class="manual-modal">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Seguridad</p>
+          <h2 id="password-dialog-title">Cambiar contraseña</h2>
+        </div>
+        <button class="text-button" type="button" data-close-password-dialog>Cerrar</button>
+      </div>
+      <form id="password-form" novalidate>
+        <div class="form-row">
+          <label for="current-password">Contraseña actual</label>
+          <input id="current-password" name="passwordActual" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="form-row">
+          <label for="new-password">Nueva contraseña</label>
+          <input id="new-password" name="passwordNueva" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <button class="button button--primary" type="submit">Guardar contraseña</button>
+        <p class="form-status" id="password-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </div>
+
+  <div class="confirm-dialog is-hidden" id="patient-history-modal" role="dialog" aria-modal="true" aria-labelledby="patient-history-title">
+    <div class="confirm-dialog__backdrop" data-close-patient-history></div>
+    <section class="manual-modal history-modal">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Expediente</p>
+          <h2 id="patient-history-title">Historial del paciente</h2>
+        </div>
+        <button class="text-button" type="button" data-close-patient-history>Cerrar</button>
+      </div>
+      <p class="form-status" id="patient-history-status" role="status" aria-live="polite"></p>
+      <div class="patient-history-content" id="patient-history-content"></div>
+    </section>
+  </div>
+
+  <script src="recepcion.js?v=20260630-5"></script>
 </body>
 </html>

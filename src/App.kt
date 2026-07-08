@@ -2,6 +2,7 @@ import io.javalin.Javalin
 import io.javalin.http.Context
 import io.javalin.http.HttpStatus
 import io.javalin.http.staticfiles.Location
+import com.fasterxml.jackson.annotation.JsonAlias
 import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -62,6 +63,11 @@ data class CambiarPasswordAdminRequest(
     val password: String = ""
 )
 
+data class CambiarPasswordPropiaRequest(
+    val passwordActual: String = "",
+    val passwordNueva: String = ""
+)
+
 data class AgendarCitaRequest(
     val pacienteId: Int = 0,
     val odontologoId: Int = 0,
@@ -103,7 +109,8 @@ data class ActualizarPiezaRequest(
 )
 
 data class CrearNotaRequest(
-    val texto_nota: String = ""
+    @param:JsonAlias("texto_nota")
+    val textoNota: String = ""
 )
 
 data class ActualizarExpedienteRequest(
@@ -147,9 +154,18 @@ data class AuthPrincipal(
 // Lee valores desde variables de entorno o desde config.properties.
 object AppConfig {
     private const val CONFIG_FILE = "config.properties"
+    private val insecureValues = setOf(
+        "",
+        "password",
+        "root",
+        "admin",
+        "cambia-este-secreto-en-produccion",
+        "cambia-este-token",
+        "dev-init-token"
+    )
 
     private val properties = Properties().apply {
-        val configFile = java.io.File(CONFIG_FILE)
+        val configFile = File(CONFIG_FILE)
 
         if (configFile.exists()) {
             configFile.inputStream().use { load(it) }
@@ -165,6 +181,43 @@ object AppConfig {
     fun getInt(key: String, defaultValue: Int): Int {
         return get(key, defaultValue.toString()).toIntOrNull() ?: defaultValue
     }
+
+    fun isProduction(): Boolean {
+        return get("APP_ENV", "development").equals("production", ignoreCase = true)
+    }
+
+    fun validateForStartup() {
+        if (!isProduction()) return
+
+        val errors = mutableListOf<String>()
+        requireSecureValue(errors, "AUTH_SECRET", minLength = 32)
+        requireSecureValue(errors, "DB_PASSWORD", minLength = 12)
+
+        if (get("DB_USER", "").isBlank()) {
+            errors.add("DB_USER es obligatorio en produccion.")
+        }
+
+        if (get("INIT_DB_ENABLED", "false").equals("true", ignoreCase = true)) {
+            errors.add("INIT_DB_ENABLED debe estar en false en produccion.")
+        }
+
+        if (!get("APP_BASE_URL", "").startsWith("https://", ignoreCase = true)) {
+            errors.add("APP_BASE_URL debe configurarse con HTTPS en produccion.")
+        }
+
+        if (errors.isNotEmpty()) {
+            error("Configuracion insegura para produccion:\n- ${errors.joinToString("\n- ")}")
+        }
+    }
+
+    private fun requireSecureValue(errors: MutableList<String>, key: String, minLength: Int) {
+        val value = get(key, "").trim()
+        val normalized = value.lowercase()
+
+        if (value.length < minLength || normalized in insecureValues) {
+            errors.add("$key debe tener al menos $minLength caracteres y no puede usar valores de ejemplo.")
+        }
+    }
 }
 
 // Punto único para abrir conexiones JDBC hacia MariaDB.
@@ -179,6 +232,25 @@ object Database {
     }
 
     fun connection(): Connection = DriverManager.getConnection(jdbcUrl, user, password)
+
+    fun serverConnection(): Connection = DriverManager.getConnection(serverJdbcUrl(), user, password)
+
+    fun configuredDatabaseName(): String {
+        val databasePart = jdbcUrl.substringAfterLast("/", "")
+        return databasePart.substringBefore("?").trim()
+    }
+
+    private fun serverJdbcUrl(): String {
+        val prefix = jdbcUrl.substringBeforeLast("/", jdbcUrl)
+        val databasePart = jdbcUrl.substringAfterLast("/", "")
+        val query = databasePart.substringAfter("?", "")
+
+        return if (databasePart.contains("?")) {
+            "$prefix/?$query"
+        } else {
+            "$prefix/"
+        }
+    }
 }
 
 // Tokens firmados para proteger la API sin agregar dependencias externas.
@@ -211,7 +283,7 @@ object AuthService {
                 tipo = parts[0],
                 rol = parts[2]
             )
-        } catch (error: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -392,6 +464,41 @@ object PatientRepository {
                     throw PatientNotFoundException()
                 }
             }
+        }
+    }
+
+    fun changeOwnPassword(id: Int, currentPassword: String, newPassword: String) {
+        val sql = """
+            SELECT password_hash
+            FROM pacientes
+            WHERE id = ? AND activo = TRUE
+            LIMIT 1
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, id)
+
+                statement.executeQuery().use { result ->
+                    if (!result.next()) throw PatientNotFoundException()
+
+                    val passwordHash = result.getString("password_hash")
+                    if (!PasswordService.verify(currentPassword, passwordHash)) {
+                        throw InvalidCurrentPasswordException()
+                    }
+                }
+            }
+        }
+
+        resetPassword(id, newPassword)
+    }
+
+    fun existsActive(connection: Connection, id: Int): Boolean {
+        val sql = "SELECT 1 FROM pacientes WHERE id = ? AND activo = TRUE LIMIT 1"
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, id)
+            statement.executeQuery().use { result -> return result.next() }
         }
     }
 
@@ -610,6 +717,32 @@ object AdminRepository {
                 }
             }
         }
+    }
+
+    fun changeOwnPassword(id: Int, currentPassword: String, newPassword: String) {
+        val sql = """
+            SELECT password_hash
+            FROM usuarios_admin
+            WHERE id = ? AND activo = TRUE
+            LIMIT 1
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, id)
+
+                statement.executeQuery().use { result ->
+                    if (!result.next()) throw AdminUserNotFoundException()
+
+                    val passwordHash = result.getString("password_hash")
+                    if (!PasswordService.verify(currentPassword, passwordHash)) {
+                        throw InvalidCurrentPasswordException()
+                    }
+                }
+            }
+        }
+
+        resetPassword(id, newPassword)
     }
 
     private fun updatePasswordHash(connection: Connection, id: Int, passwordHash: String) {
@@ -853,6 +986,15 @@ object DentistRepository {
         }
 
         return dentists
+    }
+
+    fun existsActive(connection: Connection, id: Int): Boolean {
+        val sql = "SELECT 1 FROM odontologos WHERE id = ? AND activo = TRUE LIMIT 1"
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, id)
+            statement.executeQuery().use { result -> return result.next() }
+        }
     }
 
     private fun syncFromAdminUsers(connection: Connection) {
@@ -1380,6 +1522,14 @@ object AppointmentRepository {
             connection.autoCommit = false
 
             try {
+                if (!PatientRepository.existsActive(connection, pacienteId)) {
+                    throw PatientNotFoundException()
+                }
+
+                if (!DentistRepository.existsActive(connection, odontologoId)) {
+                    throw DentistNotFoundException()
+                }
+
                 // Regla critica: no permitir dos citas activas en la misma fecha y hora.
                 if (isSlotTaken(connection, date, time, odontologoId = odontologoId)) {
                     connection.rollback()
@@ -1529,6 +1679,180 @@ object AppointmentRepository {
     }
 }
 
+// Historial consultable del paciente para recepcion, odontologos y administradores.
+object PatientHistoryRepository {
+    fun get(patientId: Int): Map<String, Any?>? {
+        Database.connection().use { connection ->
+            val patient = findPatient(connection, patientId) ?: return null
+
+            return mapOf(
+                "paciente" to patient,
+                "citas" to findAppointments(connection, patientId),
+                "notasEvolucion" to findNotes(connection, patientId)
+            )
+        }
+    }
+
+    private fun findPatient(connection: Connection, patientId: Int): Map<String, Any?>? {
+        val sql = """
+            SELECT id, nombre, telefono, email, fecha_registro
+            FROM pacientes
+            WHERE id = ?
+            LIMIT 1
+        """.trimIndent()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, patientId)
+
+            statement.executeQuery().use { result ->
+                if (!result.next()) return null
+
+                return mapOf(
+                    "id" to result.getInt("id"),
+                    "nombre" to result.getString("nombre"),
+                    "telefono" to result.getString("telefono"),
+                    "email" to result.getString("email"),
+                    "fechaRegistro" to result.getTimestamp("fecha_registro")?.toLocalDateTime()?.toString()
+                )
+            }
+        }
+    }
+
+    private fun findAppointments(connection: Connection, patientId: Int): List<Map<String, Any?>> {
+        val sql = """
+            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus,
+                   c.odontologo_id, o.nombre AS odontologo_nombre
+            FROM citas c
+            LEFT JOIN odontologos o ON o.id = c.odontologo_id
+            WHERE c.paciente_id = ?
+            ORDER BY c.fecha DESC, c.hora DESC
+        """.trimIndent()
+        val appointments = mutableListOf<Map<String, Any?>>()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, patientId)
+
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    appointments.add(
+                        mapOf(
+                            "id" to result.getInt("id"),
+                            "fecha" to result.getDate("fecha")?.toLocalDate()?.toString(),
+                            "hora" to result.getTime("hora")?.toLocalTime()?.toString(),
+                            "tratamiento" to result.getString("tratamiento"),
+                            "estatus" to result.getString("estatus"),
+                            "odontologoId" to result.getObject("odontologo_id"),
+                            "odontologoNombre" to (result.getString("odontologo_nombre") ?: "Por asignar")
+                        )
+                    )
+                }
+            }
+        }
+
+        return appointments
+    }
+
+    private fun findNotes(connection: Connection, patientId: Int): List<Map<String, Any?>> {
+        val sql = """
+            SELECT id, texto_nota, fecha_hora
+            FROM notas_evolucion
+            WHERE paciente_id = ?
+            ORDER BY fecha_hora DESC
+        """.trimIndent()
+        val notes = mutableListOf<Map<String, Any?>>()
+
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, patientId)
+
+            statement.executeQuery().use { result ->
+                while (result.next()) {
+                    notes.add(
+                        mapOf(
+                            "id" to result.getInt("id"),
+                            "textoNota" to result.getString("texto_nota"),
+                            "fechaHora" to result.getTimestamp("fecha_hora")?.toLocalDateTime()?.toString()
+                        )
+                    )
+                }
+            }
+        }
+
+        return notes
+    }
+}
+
+object AuditRepository {
+    fun create(
+        principal: AuthPrincipal?,
+        action: String,
+        target: String,
+        ip: String,
+        method: String,
+        path: String,
+        details: String
+    ) {
+        val sql = """
+            INSERT INTO auditoria (
+              actor_tipo, actor_id, actor_rol, accion, recurso, ip, metodo, ruta, detalles, fecha_hora
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setString(1, principal?.tipo ?: "ANONIMO")
+                if (principal == null) statement.setNull(2, java.sql.Types.INTEGER) else statement.setInt(2, principal.id)
+                if (principal == null) statement.setNull(3, java.sql.Types.VARCHAR) else statement.setString(3, principal.rol)
+                statement.setString(4, action)
+                statement.setString(5, target)
+                statement.setString(6, ip)
+                statement.setString(7, method)
+                statement.setString(8, path)
+                statement.setString(9, details)
+                statement.executeUpdate()
+            }
+        }
+    }
+
+    fun list(limit: Int): List<Map<String, Any?>> {
+        val sql = """
+            SELECT id, fecha_hora, actor_tipo, actor_id, actor_rol, accion, recurso, ip, metodo, ruta, detalles
+            FROM auditoria
+            ORDER BY fecha_hora DESC, id DESC
+            LIMIT ?
+        """.trimIndent()
+        val events = mutableListOf<Map<String, Any?>>()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, limit)
+
+                statement.executeQuery().use { result ->
+                    while (result.next()) {
+                        events.add(
+                            mapOf(
+                                "id" to result.getLong("id"),
+                                "fechaHora" to result.getTimestamp("fecha_hora")?.toLocalDateTime()?.toString(),
+                                "actorTipo" to result.getString("actor_tipo"),
+                                "actorId" to result.getObject("actor_id"),
+                                "actorRol" to result.getString("actor_rol"),
+                                "accion" to result.getString("accion"),
+                                "recurso" to result.getString("recurso"),
+                                "ip" to result.getString("ip"),
+                                "metodo" to result.getString("metodo"),
+                                "ruta" to result.getString("ruta"),
+                                "detalles" to result.getString("detalles")
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        return events
+    }
+}
+
 // Solicitudes enviadas por pacientes; recepcion decide si se convierten en cita.
 object AppointmentRequestRepository {
     fun create(request: CrearSolicitudCitaRequest): Int {
@@ -1539,6 +1863,14 @@ object AppointmentRequestRepository {
         """.trimIndent()
 
         Database.connection().use { connection ->
+            if (!PatientRepository.existsActive(connection, request.pacienteId)) {
+                throw PatientNotFoundException()
+            }
+
+            if (request.odontologoId > 0 && !DentistRepository.existsActive(connection, request.odontologoId)) {
+                throw DentistNotFoundException()
+            }
+
             connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
                 statement.setInt(1, request.pacienteId)
                 if (request.odontologoId > 0) statement.setInt(2, request.odontologoId) else statement.setNull(2, java.sql.Types.INTEGER)
@@ -1831,6 +2163,39 @@ object ClinicalRepository {
         error("No fue posible obtener el id de la imagen registrada.")
     }
 
+    fun findClinicalImageFile(patientId: Int, imageId: Int): Map<String, Any?>? {
+        val sql = """
+            SELECT id, paciente_id, tipo, descripcion, nombre_original, nombre_archivo,
+                   content_type, ruta_archivo, fecha_subida
+            FROM imagenes_clinicas
+            WHERE id = ? AND paciente_id = ?
+            LIMIT 1
+        """.trimIndent()
+
+        Database.connection().use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setInt(1, imageId)
+                statement.setInt(2, patientId)
+
+                statement.executeQuery().use { result ->
+                    if (!result.next()) return null
+
+                    return mapOf(
+                        "id" to result.getInt("id"),
+                        "pacienteId" to result.getInt("paciente_id"),
+                        "tipo" to result.getString("tipo"),
+                        "descripcion" to result.getString("descripcion"),
+                        "nombreOriginal" to result.getString("nombre_original"),
+                        "nombreArchivo" to result.getString("nombre_archivo"),
+                        "contentType" to result.getString("content_type"),
+                        "rutaArchivo" to result.getString("ruta_archivo"),
+                        "fechaSubida" to result.getTimestamp("fecha_subida")?.toLocalDateTime()?.toString()
+                    )
+                }
+            }
+        }
+    }
+
     private fun findPatient(connection: Connection, patientId: Int): Map<String, Any?>? {
         val sql = """
             SELECT id, nombre, telefono, email, fecha_registro
@@ -1941,7 +2306,7 @@ object ClinicalRepository {
 
     private fun findClinicalImages(connection: Connection, patientId: Int): List<Map<String, Any?>> {
         val sql = """
-            SELECT id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
+            SELECT id, paciente_id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
             FROM imagenes_clinicas
             WHERE paciente_id = ?
             ORDER BY fecha_subida DESC
@@ -1963,7 +2328,7 @@ object ClinicalRepository {
 
     private fun findClinicalImageById(connection: Connection, imageId: Int): Map<String, Any?> {
         val sql = """
-            SELECT id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
+            SELECT id, paciente_id, tipo, descripcion, nombre_original, content_type, url_publica, fecha_subida
             FROM imagenes_clinicas
             WHERE id = ?
             LIMIT 1
@@ -1983,11 +2348,12 @@ object ClinicalRepository {
     private fun mapClinicalImage(result: java.sql.ResultSet): Map<String, Any?> {
         return mapOf(
             "id" to result.getInt("id"),
+            "pacienteId" to result.getInt("paciente_id"),
             "tipo" to result.getString("tipo"),
             "descripcion" to result.getString("descripcion"),
             "nombreOriginal" to result.getString("nombre_original"),
             "contentType" to result.getString("content_type"),
-            "url" to result.getString("url_publica"),
+            "url" to "/api/pacientes/${result.getInt("paciente_id")}/imagenes/${result.getInt("id")}/archivo",
             "fechaSubida" to result.getTimestamp("fecha_subida")?.toLocalDateTime()?.toString()
         )
     }
@@ -2119,6 +2485,8 @@ class PatientNotFoundException : RuntimeException()
 class AdminUserNotFoundException : RuntimeException()
 class HolidayNotFoundException : RuntimeException()
 class AppointmentRequestNotFoundException : RuntimeException()
+class InvalidCurrentPasswordException : RuntimeException()
+class DentistNotFoundException : RuntimeException()
 
 enum class AdminRole(val databaseValue: String) {
     ADMIN("ADMIN"),
@@ -2170,6 +2538,124 @@ fun currentAuth(ctx: Context): AuthPrincipal? {
     return AuthService.parseToken(token)
 }
 
+fun auditLog(ctx: Context, action: String, target: String, details: String = "") {
+    val principal = currentAuth(ctx)
+    val actor = if (principal == null) {
+        "ANONIMO"
+    } else {
+        "${principal.tipo}#${principal.id} rol=${principal.rol}"
+    }
+    val forwardedIp = ctx.header("X-Forwarded-For")
+        ?.split(",")
+        ?.firstOrNull()
+        ?.trim()
+        ?.ifBlank { null }
+    val ip = forwardedIp ?: ctx.req().remoteAddr
+    val detailsText = details.ifBlank { "sin_detalles" }
+    val safeAction = auditSafe(action)
+    val safeTarget = auditSafe(target)
+    val safeIp = auditSafe(ip)
+    val safeMethod = auditSafe(ctx.req().method)
+    val safePath = auditSafe(ctx.path())
+    val safeDetails = auditSafe(detailsText)
+
+    println(
+        "[AUDIT] fecha=${LocalDateTime.now()} actor=${auditSafe(actor)} accion=$safeAction recurso=$safeTarget ip=$safeIp ruta=$safeMethod $safePath detalles=$safeDetails"
+    )
+
+    try {
+        AuditRepository.create(
+            principal = principal,
+            action = safeAction,
+            target = safeTarget,
+            ip = safeIp,
+            method = safeMethod,
+            path = safePath,
+            details = safeDetails
+        )
+    } catch (error: SQLException) {
+        println("[AUDIT_DB_ERROR] ${auditSafe(error.message ?: "No fue posible guardar auditoria.")}")
+    }
+}
+
+fun auditSafe(value: String): String = value
+    .replace(Regex("[\\r\\n\\t]+"), " ")
+    .take(500)
+
+fun normalizeRequiredText(value: String, field: String, minLength: Int, maxLength: Int): String {
+    val normalized = value.trim().replace(Regex("\\s+"), " ")
+
+    if (normalized.length < minLength) {
+        throw IllegalArgumentException("$field debe tener al menos $minLength caracteres.")
+    }
+
+    if (normalized.length > maxLength) {
+        throw IllegalArgumentException("$field no debe exceder $maxLength caracteres.")
+    }
+
+    if (normalized.any { Character.isISOControl(it) }) {
+        throw IllegalArgumentException("$field contiene caracteres no permitidos.")
+    }
+
+    return normalized
+}
+
+fun normalizeRequiredLongText(value: String, field: String, minLength: Int, maxLength: Int): String {
+    val normalized = value.trim()
+
+    if (normalized.length < minLength) {
+        throw IllegalArgumentException("$field debe tener al menos $minLength caracteres.")
+    }
+
+    if (normalized.length > maxLength) {
+        throw IllegalArgumentException("$field no debe exceder $maxLength caracteres.")
+    }
+
+    if (normalized.any { it != '\n' && it != '\r' && it != '\t' && Character.isISOControl(it) }) {
+        throw IllegalArgumentException("$field contiene caracteres no permitidos.")
+    }
+
+    return normalized
+}
+
+fun normalizeEmail(value: String): String {
+    val normalized = value.trim().lowercase()
+    val emailPattern = Regex("^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$", RegexOption.IGNORE_CASE)
+
+    if (normalized.length > 160 || !emailPattern.matches(normalized)) {
+        throw IllegalArgumentException("El correo electronico no tiene un formato valido.")
+    }
+
+    return normalized
+}
+
+fun normalizePhone(value: String): String {
+    val normalized = value.trim()
+    val phonePattern = Regex("^[0-9+()\\s-]{7,20}$")
+
+    if (!phonePattern.matches(normalized)) {
+        throw IllegalArgumentException("El telefono debe tener de 7 a 20 caracteres y solo usar numeros, espacios, +, guiones o parentesis.")
+    }
+
+    return normalized
+}
+
+fun validatePasswordStrength(value: String) {
+    if (value.length !in 8..128) {
+        throw IllegalArgumentException("La contrasena debe tener entre 8 y 128 caracteres.")
+    }
+
+    if (!value.any { it.isLetter() } || !value.any { it.isDigit() }) {
+        throw IllegalArgumentException("La contrasena debe incluir al menos una letra y un numero.")
+    }
+}
+
+fun validateFutureDateTime(value: LocalDateTime, field: String) {
+    if (value.isBefore(LocalDateTime.now())) {
+        throw IllegalArgumentException("$field debe ser una fecha y hora futura.")
+    }
+}
+
 fun requireRoles(ctx: Context, vararg roles: String): Boolean {
     val principal = currentAuth(ctx)
 
@@ -2209,22 +2695,21 @@ fun requirePatientOwnerOrRoles(ctx: Context, patientId: Int, vararg roles: Strin
 
 @Suppress("UNUSED_PARAMETER")
 fun main(args: Array<String>) {
+    AppConfig.validateForStartup()
+
     val port = AppConfig.getInt("SERVER_PORT", 8080)
     val publicDirectory = AppConfig.get("STATIC_FILES_DIR", "public")
     val uploadsDirectory = AppConfig.get("UPLOADS_DIR", "uploads")
+    val clinicalImagesDirectory = AppConfig.get("CLINICAL_IMAGES_DIR", "uploads/clinical-images")
 
     File(uploadsDirectory).mkdirs()
+    File(clinicalImagesDirectory).mkdirs()
 
     val app = Javalin.create { config ->
         // Sirve los archivos HTML/CSS/JS desde la carpeta public.
         config.staticFiles.add { staticFiles ->
             staticFiles.hostedPath = "/"
             staticFiles.directory = publicDirectory
-            staticFiles.location = Location.EXTERNAL
-        }
-        config.staticFiles.add { staticFiles ->
-            staticFiles.hostedPath = "/uploads"
-            staticFiles.directory = uploadsDirectory
             staticFiles.location = Location.EXTERNAL
         }
     }
@@ -2236,6 +2721,7 @@ fun main(args: Array<String>) {
     app.get("/api/pacientes/buscar") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION", "ODONTOLOGO")) searchPatients(ctx) }
     app.put("/api/pacientes/{id}") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) updatePatient(ctx) }
     app.put("/api/pacientes/{id}/password") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) resetPatientPassword(ctx) }
+    app.put("/api/pacientes/password") { ctx -> changeOwnPatientPassword(ctx) }
     app.delete("/api/pacientes/{id}") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) deletePatient(ctx) }
     app.get("/api/pacientes/{id}/citas") { ctx ->
         val patientId = ctx.pathParam("id").toIntOrNull()
@@ -2258,7 +2744,9 @@ fun main(args: Array<String>) {
     app.get("/api/admin/usuarios") { ctx -> if (requireRoles(ctx, "ADMIN")) listAdminUsers(ctx) }
     app.post("/api/admin/usuarios") { ctx -> if (requireRoles(ctx, "ADMIN")) createAdminUser(ctx) }
     app.put("/api/admin/usuarios/{id}/password") { ctx -> if (requireRoles(ctx, "ADMIN")) resetAdminUserPassword(ctx) }
+    app.put("/api/admin/password") { ctx -> changeOwnAdminPassword(ctx) }
     app.delete("/api/admin/usuarios/{id}") { ctx -> if (requireRoles(ctx, "ADMIN")) deleteAdminUser(ctx) }
+    app.get("/api/admin/auditoria") { ctx -> if (requireRoles(ctx, "ADMIN")) listAuditEvents(ctx) }
     app.post("/api/citas") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) createAppointment(ctx) }
     app.get("/api/citas") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION")) listAppointments(ctx) }
     app.get("/api/citas/disponibilidad") { ctx -> getAppointmentAvailability(ctx) }
@@ -2291,21 +2779,33 @@ fun main(args: Array<String>) {
             getClinicalFile(ctx)
         }
     }
+    app.get("/api/pacientes/{id}/historial") { ctx -> if (requireRoles(ctx, "ADMIN", "RECEPCION", "ODONTOLOGO")) getPatientHistory(ctx) }
     app.put("/api/pacientes/{id}/expediente") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) updateClinicalFile(ctx) }
     app.put("/api/odontograma/{odontogramaId}/pieza/{numeroPieza}") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) updateOdontogramPiece(ctx) }
     app.post("/api/pacientes/{id}/notas") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) addClinicalNote(ctx) }
     app.post("/api/pacientes/{id}/imagenes") { ctx -> if (requireRoles(ctx, "ADMIN", "ODONTOLOGO")) uploadClinicalImage(ctx) }
+    app.get("/api/pacientes/{id}/imagenes/{imagenId}/archivo") { ctx ->
+        val patientId = ctx.pathParam("id").toIntOrNull()
+        if (patientId == null) {
+            badRequest(ctx, "El id del paciente debe ser numerico.")
+        } else if (requirePatientOwnerOrRoles(ctx, patientId, "ADMIN", "RECEPCION", "ODONTOLOGO")) {
+            serveClinicalImage(ctx)
+        }
+    }
 
     // Rutas de apoyo para pruebas locales.
     app.get("/api/health/db") { ctx -> checkDatabaseHealth(ctx) }
     app.post("/api/admin/init-db") { ctx -> initializeDatabaseSchema(ctx) }
 
-    // Devuelve errores de base de datos en JSON para facilitar depuracion.
+    // No expone detalles tecnicos al usuario; los conserva solo en consola.
     app.exception(SQLException::class.java) { error, ctx ->
-        error.printStackTrace()
-        ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(
-            ApiError("Error de base de datos: ${error.message ?: "revisa la conexion y las tablas."}")
-        )
+        logServerError(ctx, error)
+        internalServerError(ctx)
+    }
+
+    app.exception(Exception::class.java) { error, ctx ->
+        logServerError(ctx, error)
+        internalServerError(ctx)
     }
 
     app.start(port)
@@ -2316,19 +2816,25 @@ fun main(args: Array<String>) {
 fun registerPatient(ctx: Context) {
     val request = ctx.bodyAsClass(RegistroPacienteRequest::class.java)
 
-    if (request.nombre.isBlank() || request.telefono.isBlank() || request.email.isBlank() || request.password.isBlank()) {
-        return badRequest(ctx, "Nombre, telefono, email y password son obligatorios.")
+    try {
+        normalizeRequiredText(request.nombre, "Nombre", 2, 120)
+        normalizePhone(request.telefono)
+        normalizeEmail(request.email)
+        validatePasswordStrength(request.password)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Datos de paciente invalidos.")
     }
 
     try {
         val patientId = PatientRepository.create(request)
+        auditLog(ctx, "PACIENTE_CREADO", "paciente:$patientId", "email=${request.email.trim().lowercase()}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to patientId,
                 "mensaje" to "Paciente registrado correctamente."
             )
         )
-    } catch (error: SQLIntegrityConstraintViolationException) {
+    } catch (_: SQLIntegrityConstraintViolationException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("El email ya esta registrado. Usa otro correo para la prueba."))
     }
 }
@@ -2359,12 +2865,17 @@ fun updatePatient(ctx: Context) {
         return badRequest(ctx, "El id del paciente debe ser numerico.")
     }
 
-    if (request.nombre.isBlank() || request.telefono.isBlank() || request.email.isBlank()) {
-        return badRequest(ctx, "Nombre, telefono y email son obligatorios.")
+    try {
+        normalizeRequiredText(request.nombre, "Nombre", 2, 120)
+        normalizePhone(request.telefono)
+        normalizeEmail(request.email)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Datos de paciente invalidos.")
     }
 
     try {
         PatientRepository.update(patientId, request)
+        auditLog(ctx, "PACIENTE_ACTUALIZADO", "paciente:$patientId", "email=${request.email.trim().lowercase()}")
         ctx.json(
             mapOf(
                 "id" to patientId,
@@ -2374,9 +2885,9 @@ fun updatePatient(ctx: Context) {
                 "mensaje" to "Paciente actualizado correctamente."
             )
         )
-    } catch (error: SQLIntegrityConstraintViolationException) {
+    } catch (_: SQLIntegrityConstraintViolationException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("El email ya esta registrado en otro paciente."))
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
@@ -2390,19 +2901,53 @@ fun resetPatientPassword(ctx: Context) {
         return badRequest(ctx, "El id del paciente debe ser numerico.")
     }
 
-    if (request.password.length < 6) {
-        return badRequest(ctx, "La nueva contrasena debe tener al menos 6 caracteres.")
+    try {
+        validatePasswordStrength(request.password)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Contrasena invalida.")
     }
 
     try {
         PatientRepository.resetPassword(patientId, request.password)
+        auditLog(ctx, "PASSWORD_PACIENTE_REINICIADA", "paciente:$patientId")
         ctx.json(
             mapOf(
                 "id" to patientId,
                 "mensaje" to "Contrasena actualizada correctamente."
             )
         )
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    }
+}
+
+// PUT /api/pacientes/password: permite al paciente cambiar su propia contraseña.
+fun changeOwnPatientPassword(ctx: Context) {
+    val principal = currentAuth(ctx)
+    val request = ctx.bodyAsClass(CambiarPasswordPropiaRequest::class.java)
+
+    if (principal == null || principal.tipo != "PACIENTE") {
+        ctx.status(HttpStatus.UNAUTHORIZED).json(ApiError("Sesion de paciente requerida."))
+        return
+    }
+
+    if (request.passwordActual.isBlank()) {
+        return badRequest(ctx, "La contrasena actual es obligatoria.")
+    }
+
+    try {
+        validatePasswordStrength(request.passwordNueva)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Contrasena invalida.")
+    }
+
+    try {
+        PatientRepository.changeOwnPassword(principal.id, request.passwordActual, request.passwordNueva)
+        auditLog(ctx, "PASSWORD_PROPIA_PACIENTE_CAMBIADA", "paciente:${principal.id}")
+        ctx.json(mapOf("mensaje" to "Contrasena actualizada correctamente."))
+    } catch (_: InvalidCurrentPasswordException) {
+        ctx.status(HttpStatus.CONFLICT).json(ApiError("La contrasena actual no es correcta."))
+    } catch (_: PatientNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
@@ -2417,13 +2962,14 @@ fun deletePatient(ctx: Context) {
 
     try {
         PatientRepository.deleteProfileAndClinicalHistory(patientId)
+        auditLog(ctx, "PACIENTE_E_HISTORIAL_ELIMINADOS", "paciente:$patientId")
         ctx.json(
             mapOf(
                 "id" to patientId,
                 "mensaje" to "Paciente e historial clinico eliminados correctamente."
             )
         )
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
@@ -2450,6 +2996,7 @@ fun cancelPatientAppointment(ctx: Context) {
 
     try {
         AppointmentRepository.cancelByPatient(appointmentId, patientId)
+        auditLog(ctx, "CITA_CANCELADA_POR_PACIENTE", "cita:$appointmentId", "pacienteId=$patientId")
         ctx.json(
             mapOf(
                 "id" to appointmentId,
@@ -2458,11 +3005,11 @@ fun cancelPatientAppointment(ctx: Context) {
                 "mensaje" to "Cita cancelada correctamente."
             )
         )
-    } catch (error: AppointmentPolicyException) {
+    } catch (_: AppointmentPolicyException) {
         ctx.status(HttpStatus.CONFLICT).json(
             ApiError("La cita solo puede cancelarse con al menos 24 horas de anticipacion.")
         )
-    } catch (error: AppointmentNotFoundException) {
+    } catch (_: AppointmentNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro la cita solicitada."))
     }
 }
@@ -2525,16 +3072,21 @@ fun createAdminUser(ctx: Context) {
     val request = ctx.bodyAsClass(CrearAdminUsuarioRequest::class.java)
     val role = AdminRole.from(request.rol)
 
-    if (request.nombre.isBlank() || request.email.isBlank() || request.password.isBlank() || role == null) {
-        return badRequest(ctx, "Nombre, email, password y rol valido son obligatorios.")
+    if (role == null) {
+        return badRequest(ctx, "El rol debe ser ADMIN, RECEPCION u ODONTOLOGO.")
     }
 
-    if (request.password.length < 6) {
-        return badRequest(ctx, "La contrasena debe tener al menos 6 caracteres.")
+    try {
+        normalizeRequiredText(request.nombre, "Nombre", 2, 120)
+        normalizeEmail(request.email)
+        validatePasswordStrength(request.password)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Datos de usuario invalidos.")
     }
 
     try {
         val userId = AdminRepository.create(request, role)
+        auditLog(ctx, "USUARIO_INTERNO_CREADO", "usuario_admin:$userId", "rol=${role.databaseValue} email=${request.email.trim().lowercase()}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to userId,
@@ -2545,7 +3097,7 @@ fun createAdminUser(ctx: Context) {
                 "mensaje" to "Usuario administrativo creado correctamente."
             )
         )
-    } catch (error: SQLIntegrityConstraintViolationException) {
+    } catch (_: SQLIntegrityConstraintViolationException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("El email administrativo ya esta registrado."))
     }
 }
@@ -2559,19 +3111,53 @@ fun resetAdminUserPassword(ctx: Context) {
         return badRequest(ctx, "El id del usuario debe ser numerico.")
     }
 
-    if (request.password.length < 6) {
-        return badRequest(ctx, "La nueva contrasena debe tener al menos 6 caracteres.")
+    try {
+        validatePasswordStrength(request.password)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Contrasena invalida.")
     }
 
     try {
         AdminRepository.resetPassword(userId, request.password)
+        auditLog(ctx, "PASSWORD_USUARIO_INTERNO_REINICIADA", "usuario_admin:$userId")
         ctx.json(
             mapOf(
                 "id" to userId,
                 "mensaje" to "Contrasena actualizada correctamente."
             )
         )
-    } catch (error: AdminUserNotFoundException) {
+    } catch (_: AdminUserNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el usuario administrativo solicitado."))
+    }
+}
+
+// PUT /api/admin/password: permite a recepcion, odontologo o admin cambiar su propia contrasena.
+fun changeOwnAdminPassword(ctx: Context) {
+    val principal = currentAuth(ctx)
+    val request = ctx.bodyAsClass(CambiarPasswordPropiaRequest::class.java)
+
+    if (principal == null || principal.tipo != "ADMIN") {
+        ctx.status(HttpStatus.UNAUTHORIZED).json(ApiError("Sesion de personal requerida."))
+        return
+    }
+
+    if (request.passwordActual.isBlank()) {
+        return badRequest(ctx, "La contrasena actual es obligatoria.")
+    }
+
+    try {
+        validatePasswordStrength(request.passwordNueva)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Contrasena invalida.")
+    }
+
+    try {
+        AdminRepository.changeOwnPassword(principal.id, request.passwordActual, request.passwordNueva)
+        auditLog(ctx, "PASSWORD_PROPIA_PERSONAL_CAMBIADA", "usuario_admin:${principal.id}")
+        ctx.json(mapOf("mensaje" to "Contrasena actualizada correctamente."))
+    } catch (_: InvalidCurrentPasswordException) {
+        ctx.status(HttpStatus.CONFLICT).json(ApiError("La contrasena actual no es correcta."))
+    } catch (_: AdminUserNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el usuario administrativo solicitado."))
     }
 }
@@ -2586,15 +3172,24 @@ fun deleteAdminUser(ctx: Context) {
 
     try {
         AdminRepository.deactivate(userId)
+        auditLog(ctx, "USUARIO_INTERNO_ELIMINADO", "usuario_admin:$userId")
         ctx.json(
             mapOf(
                 "id" to userId,
                 "mensaje" to "Usuario eliminado correctamente."
             )
         )
-    } catch (error: AdminUserNotFoundException) {
+    } catch (_: AdminUserNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el usuario administrativo solicitado."))
     }
+}
+
+// GET /api/admin/auditoria: consulta los eventos sensibles recientes.
+fun listAuditEvents(ctx: Context) {
+    val requestedLimit = ctx.queryParam("limit")?.toIntOrNull() ?: 100
+    val limit = requestedLimit.coerceIn(1, 500)
+
+    ctx.json(AuditRepository.list(limit))
 }
 
 // GET /api/citas/hoy: agenda consolidada del dia actual.
@@ -2610,7 +3205,7 @@ fun listAppointments(ctx: Context) {
     } else {
         try {
             parseDate(requestedDate)
-        } catch (error: IllegalArgumentException) {
+        } catch (_: IllegalArgumentException) {
             return badRequest(ctx, "La fecha debe tener formato YYYY-MM-DD.")
         }
     }
@@ -2630,7 +3225,7 @@ fun getAppointmentAvailability(ctx: Context) {
 
     val appointmentDate = try {
         parseDate(requestedDate)
-    } catch (error: IllegalArgumentException) {
+    } catch (_: IllegalArgumentException) {
         return badRequest(ctx, "La fecha debe tener formato YYYY-MM-DD.")
     }
 
@@ -2656,6 +3251,8 @@ fun scheduleAppointment(ctx: Context) {
     }
 
     try {
+        normalizeRequiredText(request.tratamiento, "Tratamiento", 3, 160)
+        validateFutureDateTime(LocalDateTime.of(parseDate(request.fecha), parseTime(request.hora)), "La cita")
         val appointmentId = AppointmentRepository.schedule(request)
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
@@ -2663,8 +3260,12 @@ fun scheduleAppointment(ctx: Context) {
                 "mensaje" to "Cita agendada correctamente."
             )
         )
-    } catch (error: AppointmentConflictException) {
+    } catch (_: AppointmentConflictException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("La fecha y hora seleccionadas ya estan ocupadas."))
+    } catch (_: PatientNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    } catch (_: DentistNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el odontologo solicitado."))
     } catch (error: IllegalArgumentException) {
         badRequest(ctx, error.message ?: "Datos de cita invalidos.")
     }
@@ -2679,11 +3280,20 @@ fun listPayments(ctx: Context) {
 fun createPayment(ctx: Context) {
     val request = ctx.bodyAsClass(CrearPagoRequest::class.java)
 
-    if (request.pacienteNombre.isBlank() || request.concepto.isBlank() || request.monto <= 0.0 || request.metodo.isBlank()) {
-        return badRequest(ctx, "Paciente, concepto, monto y metodo son obligatorios.")
+    try {
+        normalizeRequiredText(request.pacienteNombre, "Paciente", 2, 120)
+        normalizeRequiredText(request.concepto, "Concepto", 3, 160)
+        normalizeRequiredText(request.metodo, "Metodo de pago", 2, 40)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Datos de pago invalidos.")
+    }
+
+    if (request.monto <= 0.0 || request.monto > 999999.99) {
+        return badRequest(ctx, "El monto debe ser mayor a 0 y menor a 1,000,000.")
     }
 
     val paymentId = PaymentRepository.create(request)
+    auditLog(ctx, "PAGO_REGISTRADO", "pago:$paymentId", "paciente=${request.pacienteNombre.trim()} monto=${request.monto}")
     ctx.status(HttpStatus.CREATED).json(
         mapOf(
             "id" to paymentId,
@@ -2708,6 +3318,7 @@ fun updateBusinessHours(ctx: Context) {
 
     try {
         BusinessHoursRepository.update(request.horarios)
+        auditLog(ctx, "HORARIOS_GENERALES_ACTUALIZADOS", "horarios_atencion", "dias=${request.horarios.size}")
         ctx.json(
             mapOf(
                 "mensaje" to "Horarios de atencion actualizados correctamente.",
@@ -2744,6 +3355,7 @@ fun updateDentistHours(ctx: Context) {
 
     try {
         DentistHoursRepository.update(odontologistId, request.horarios)
+        auditLog(ctx, "HORARIOS_ODONTOLOGO_ACTUALIZADOS", "odontologo:$odontologistId", "dias=${request.horarios.size}")
         ctx.json(
             mapOf(
                 "odontologoId" to odontologistId,
@@ -2771,6 +3383,7 @@ fun createHoliday(ctx: Context) {
 
     try {
         val holidayId = HolidayRepository.create(request)
+        auditLog(ctx, "CIERRE_ESPECIAL_REGISTRADO", "dia_feriado:$holidayId", "fecha=${request.fecha}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to holidayId,
@@ -2793,13 +3406,14 @@ fun deleteHoliday(ctx: Context) {
 
     try {
         HolidayRepository.delete(holidayId)
+        auditLog(ctx, "CIERRE_ESPECIAL_ELIMINADO", "dia_feriado:$holidayId")
         ctx.json(
             mapOf(
                 "id" to holidayId,
                 "mensaje" to "Dia feriado eliminado correctamente."
             )
         )
-    } catch (error: HolidayNotFoundException) {
+    } catch (_: HolidayNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el dia feriado solicitado."))
     }
 }
@@ -2813,15 +3427,22 @@ fun createAppointment(ctx: Context) {
     }
 
     try {
+        normalizeRequiredText(request.motivo, "Motivo", 3, 160)
+        validateFutureDateTime(parseDateTime(request.fechaHora), "La cita")
         val appointmentId = AppointmentRepository.create(request)
+        auditLog(ctx, "CITA_CREADA", "cita:$appointmentId", "pacienteId=${request.pacienteId} odontologoId=${request.odontologoId} fechaHora=${request.fechaHora}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to appointmentId,
                 "mensaje" to "Cita registrada correctamente."
             )
         )
-    } catch (error: AppointmentConflictException) {
+    } catch (_: AppointmentConflictException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("La fecha y hora seleccionadas ya estan ocupadas."))
+    } catch (_: PatientNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    } catch (_: DentistNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el odontologo solicitado."))
     } catch (error: IllegalArgumentException) {
         badRequest(ctx, error.message ?: "Datos de cita invalidos.")
     }
@@ -2843,7 +3464,9 @@ fun rescheduleAppointment(ctx: Context) {
     if (!requirePatientOwnerOrRoles(ctx, request.pacienteId, "ADMIN", "RECEPCION")) return
 
     try {
+        validateFutureDateTime(parseDateTime(request.fechaHora), "La nueva fecha de la cita")
         AppointmentRepository.rescheduleByPatient(appointmentId, request)
+        auditLog(ctx, "CITA_REPROGRAMADA", "cita:$appointmentId", "pacienteId=${request.pacienteId} fechaHora=${request.fechaHora}")
         ctx.json(
             mapOf(
                 "id" to appointmentId,
@@ -2852,13 +3475,13 @@ fun rescheduleAppointment(ctx: Context) {
                 "mensaje" to "Cita reprogramada correctamente."
             )
         )
-    } catch (error: AppointmentConflictException) {
+    } catch (_: AppointmentConflictException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("La fecha y hora seleccionadas ya estan ocupadas."))
-    } catch (error: AppointmentPolicyException) {
+    } catch (_: AppointmentPolicyException) {
         ctx.status(HttpStatus.CONFLICT).json(
             ApiError("La cita solo puede reprogramarse con al menos 24 horas de anticipacion.")
         )
-    } catch (error: AppointmentNotFoundException) {
+    } catch (_: AppointmentNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro la cita solicitada para este paciente."))
     } catch (error: IllegalArgumentException) {
         badRequest(ctx, error.message ?: "Datos de cita invalidos.")
@@ -2876,13 +3499,20 @@ fun createAppointmentRequest(ctx: Context) {
     if (!requirePatientOwnerOrRoles(ctx, request.pacienteId, "ADMIN", "RECEPCION")) return
 
     try {
+        normalizeRequiredText(request.motivo, "Motivo", 3, 180)
+        validateFutureDateTime(parseDateTime(request.fechaHora), "La solicitud de cita")
         val requestId = AppointmentRequestRepository.create(request)
+        auditLog(ctx, "SOLICITUD_CITA_CREADA", "solicitud_cita:$requestId", "pacienteId=${request.pacienteId} fechaHora=${request.fechaHora}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to requestId,
                 "mensaje" to "Solicitud enviada correctamente. Recepcion confirmara la cita."
             )
         )
+    } catch (_: PatientNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    } catch (_: DentistNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el odontologo solicitado."))
     } catch (error: IllegalArgumentException) {
         badRequest(ctx, error.message ?: "Datos de solicitud invalidos.")
     }
@@ -2913,6 +3543,7 @@ fun acceptAppointmentRequest(ctx: Context) {
 
     try {
         val appointmentId = AppointmentRequestRepository.accept(requestId, request.odontologoId)
+        auditLog(ctx, "SOLICITUD_CITA_ACEPTADA", "solicitud_cita:$requestId", "citaId=$appointmentId odontologoId=${request.odontologoId}")
         ctx.json(
             mapOf(
                 "id" to requestId,
@@ -2920,9 +3551,13 @@ fun acceptAppointmentRequest(ctx: Context) {
                 "mensaje" to "Solicitud aceptada y cita creada correctamente."
             )
         )
-    } catch (error: AppointmentConflictException) {
+    } catch (_: AppointmentConflictException) {
         ctx.status(HttpStatus.CONFLICT).json(ApiError("Ese horario ya fue ocupado por otra cita."))
-    } catch (error: AppointmentRequestNotFoundException) {
+    } catch (_: PatientNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+    } catch (_: DentistNotFoundException) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el odontologo solicitado."))
+    } catch (_: AppointmentRequestNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro una solicitud pendiente con ese id."))
     }
 }
@@ -2937,13 +3572,14 @@ fun rejectAppointmentRequest(ctx: Context) {
 
     try {
         AppointmentRequestRepository.reject(requestId)
+        auditLog(ctx, "SOLICITUD_CITA_RECHAZADA", "solicitud_cita:$requestId")
         ctx.json(
             mapOf(
                 "id" to requestId,
                 "mensaje" to "Solicitud rechazada correctamente."
             )
         )
-    } catch (error: AppointmentRequestNotFoundException) {
+    } catch (_: AppointmentRequestNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro una solicitud pendiente con ese id."))
     }
 }
@@ -2964,6 +3600,7 @@ fun updateAppointmentStatus(ctx: Context) {
 
     try {
         AppointmentRepository.updateStatus(appointmentId, status)
+        auditLog(ctx, "ESTATUS_CITA_ACTUALIZADO", "cita:$appointmentId", "estatus=${status.databaseValue}")
         ctx.json(
             mapOf(
                 "id" to appointmentId,
@@ -2971,7 +3608,7 @@ fun updateAppointmentStatus(ctx: Context) {
                 "mensaje" to "Estatus actualizado correctamente."
             )
         )
-    } catch (error: AppointmentNotFoundException) {
+    } catch (_: AppointmentNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro la cita solicitada."))
     }
 }
@@ -2994,7 +3631,25 @@ fun getClinicalFile(ctx: Context) {
     ctx.json(record)
 }
 
-// PUT /api/pacientes/{id}/expediente: actualiza datos clínicos editables.
+// GET /api/pacientes/{id}/historial: citas historicas y notas de evolucion.
+fun getPatientHistory(ctx: Context) {
+    val patientId = ctx.pathParam("id").toIntOrNull()
+
+    if (patientId == null || patientId <= 0) {
+        return badRequest(ctx, "El id del paciente debe ser numerico.")
+    }
+
+    val history = PatientHistoryRepository.get(patientId)
+
+    if (history == null) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
+        return
+    }
+
+    ctx.json(history)
+}
+
+// PUT /api/pacientes/{id}/expediente: actualiza datos clinicos editables.
 fun updateClinicalFile(ctx: Context) {
     val patientId = ctx.pathParam("id").toIntOrNull()
     val request = ctx.bodyAsClass(ActualizarExpedienteRequest::class.java)
@@ -3003,19 +3658,21 @@ fun updateClinicalFile(ctx: Context) {
         return badRequest(ctx, "El id del paciente debe ser numerico.")
     }
 
-    if (request.edad != null && (request.edad < 0 || request.edad > 120)) {
+    if (request.edad != null && request.edad !in 0..120) {
         return badRequest(ctx, "La edad debe estar entre 0 y 120.")
     }
 
     try {
+        val clinicalFile = ClinicalRepository.updateClinicalFile(patientId, request)
+        auditLog(ctx, "EXPEDIENTE_CLINICO_ACTUALIZADO", "paciente:$patientId")
         ctx.json(
             mapOf(
                 "pacienteId" to patientId,
-                "expediente" to ClinicalRepository.updateClinicalFile(patientId, request),
+                "expediente" to clinicalFile,
                 "mensaje" to "Expediente actualizado correctamente."
             )
         )
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
@@ -3036,6 +3693,7 @@ fun updateOdontogramPiece(ctx: Context) {
 
     try {
         ClinicalRepository.updateToothPiece(odontogramId, toothNumber, request)
+        auditLog(ctx, "ODONTOGRAMA_PIEZA_ACTUALIZADA", "odontograma:$odontogramId", "pieza=$toothNumber superficie=${normalizeSurface(request.superficie)} estado=${normalizeClinicalStatus(request.estado)}")
         ctx.json(
             mapOf(
                 "odontogramaId" to odontogramId,
@@ -3045,7 +3703,7 @@ fun updateOdontogramPiece(ctx: Context) {
                 "mensaje" to "Pieza dental actualizada correctamente."
             )
         )
-    } catch (error: OdontogramPieceNotFoundException) {
+    } catch (_: OdontogramPieceNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro la pieza del odontograma solicitada."))
     }
 }
@@ -3059,12 +3717,15 @@ fun addClinicalNote(ctx: Context) {
         return badRequest(ctx, "El id del paciente debe ser numerico.")
     }
 
-    if (request.texto_nota.isBlank()) {
-        return badRequest(ctx, "texto_nota es obligatorio.")
+    try {
+        normalizeRequiredLongText(request.textoNota, "Nota de evolucion", 3, 4000)
+    } catch (error: IllegalArgumentException) {
+        return badRequest(ctx, error.message ?: "Nota de evolucion invalida.")
     }
 
     try {
-        val noteId = ClinicalRepository.addNote(patientId, request.texto_nota)
+        val noteId = ClinicalRepository.addNote(patientId, request.textoNota)
+        auditLog(ctx, "NOTA_EVOLUCION_AGREGADA", "nota:$noteId", "pacienteId=$patientId")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to noteId,
@@ -3072,7 +3733,7 @@ fun addClinicalNote(ctx: Context) {
                 "mensaje" to "Nota registrada correctamente."
             )
         )
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
@@ -3102,7 +3763,6 @@ fun uploadClinicalImage(ctx: Context) {
     }
 
     val uploadsRoot = AppConfig.get("CLINICAL_IMAGES_DIR", "uploads/clinical-images")
-    val publicRoot = AppConfig.get("CLINICAL_IMAGES_PUBLIC_PATH", "/uploads/clinical-images").trimEnd('/')
     val patientDirectory = File(uploadsRoot, "paciente-$patientId")
     patientDirectory.mkdirs()
 
@@ -3123,9 +3783,10 @@ fun uploadClinicalImage(ctx: Context) {
             storedName = storedName,
             contentType = contentType,
             filePath = targetFile.path,
-            publicUrl = "$publicRoot/paciente-$patientId/$storedName"
+            publicUrl = ""
         )
 
+        auditLog(ctx, "IMAGEN_CLINICA_SUBIDA", "paciente:$patientId", "archivo=${uploadedFile.filename()} tipo=$contentType")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "pacienteId" to patientId,
@@ -3133,15 +3794,66 @@ fun uploadClinicalImage(ctx: Context) {
                 "mensaje" to "Imagen clinica registrada correctamente."
             )
         )
-    } catch (error: PatientNotFoundException) {
+    } catch (_: PatientNotFoundException) {
         targetFile.delete()
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el paciente solicitado."))
     }
 }
 
+// GET /api/pacientes/{id}/imagenes/{imagenId}/archivo: entrega archivo clinico protegido por sesion.
+fun serveClinicalImage(ctx: Context) {
+    val patientId = ctx.pathParam("id").toIntOrNull()
+    val imageId = ctx.pathParam("imagenId").toIntOrNull()
+
+    if (patientId == null || patientId <= 0 || imageId == null || imageId <= 0) {
+        return badRequest(ctx, "El id del paciente y de la imagen deben ser numericos.")
+    }
+
+    val image = ClinicalRepository.findClinicalImageFile(patientId, imageId)
+
+    if (image == null) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro la imagen clinica solicitada."))
+        return
+    }
+
+    val uploadsRoot = File(AppConfig.get("CLINICAL_IMAGES_DIR", "uploads/clinical-images")).canonicalFile
+    val imageFile = File(image["rutaArchivo"] as String).canonicalFile
+
+    if (!imageFile.path.startsWith(uploadsRoot.path) || !imageFile.exists() || !imageFile.isFile) {
+        ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el archivo clinico solicitado."))
+        return
+    }
+
+    val contentType = image["contentType"] as? String ?: "application/octet-stream"
+    val originalName = (image["nombreOriginal"] as? String)
+        ?.replace(Regex("[\\r\\n\"]+"), "_")
+        ?.ifBlank { "archivo-clinico" }
+        ?: "archivo-clinico"
+
+    ctx.contentType(contentType)
+    ctx.header("Cache-Control", "private, no-store")
+    ctx.header("Content-Disposition", "inline; filename=\"$originalName\"")
+    ctx.result(imageFile.inputStream())
+}
+
 // Respuesta comun para validaciones de entrada.
 fun badRequest(ctx: Context, message: String) {
     ctx.status(HttpStatus.BAD_REQUEST).json(ApiError(message))
+}
+
+fun internalServerError(ctx: Context) {
+    ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(
+        ApiError("No fue posible procesar la solicitud. Intenta de nuevo o contacta a administracion.")
+    )
+}
+
+fun logServerError(ctx: Context, error: Exception) {
+    val principal = currentAuth(ctx)
+    val actor = if (principal == null) "ANONIMO" else "${principal.tipo}#${principal.id} rol=${principal.rol}"
+    val message = error.message ?: error::class.simpleName.orEmpty()
+
+    println("[ERROR] fecha=${LocalDateTime.now()} actor=${auditSafe(actor)} ruta=${auditSafe(ctx.req().method)} ${auditSafe(ctx.path())} tipo=${error::class.simpleName} mensaje=${auditSafe(message)}")
+    error.printStackTrace()
 }
 
 // Endpoint rapido para comprobar conexion con MariaDB.
@@ -3162,6 +3874,7 @@ fun checkDatabaseHealth(ctx: Context) {
 }
 
 // Inicializador local para crear tablas cuando no se tiene cliente mysql instalado.
+@Suppress("SqlSourceToSinkFlow")
 fun initializeDatabaseSchema(ctx: Context) {
     val enabled = AppConfig.get("INIT_DB_ENABLED", "false").equals("true", ignoreCase = true)
     val expectedToken = AppConfig.get("INIT_DB_TOKEN", "")
@@ -3181,10 +3894,30 @@ fun initializeDatabaseSchema(ctx: Context) {
 
     val executedStatements = mutableListOf<String>()
     val statements = splitSqlStatements(schemaFile.readText())
+    val databaseName = Database.configuredDatabaseName()
+
+    if (databaseName.isBlank()) {
+        return badRequest(ctx, "DB_URL debe incluir el nombre de la base de datos.")
+    }
+
+    val safeDatabaseName = safeSqlIdentifier(databaseName)
+
+    Database.serverConnection().use { connection ->
+        connection.createStatement().use { sqlStatement ->
+            sqlStatement.execute(
+                """
+                CREATE DATABASE IF NOT EXISTS `$safeDatabaseName`
+                  CHARACTER SET utf8mb4
+                  COLLATE utf8mb4_unicode_ci
+                """.trimIndent()
+            )
+            executedStatements.add("CREATE DATABASE IF NOT EXISTS $safeDatabaseName")
+        }
+    }
 
     Database.connection().use { connection ->
         statements.forEach { statement ->
-            // La conexion ya apunta a odonto_gral; estas sentencias no son necesarias aqui.
+            // La conexion ya apunta a la base configurada; estas sentencias no son necesarias aqui.
             if (statement.startsWith("CREATE DATABASE", ignoreCase = true) || statement.startsWith("USE ", ignoreCase = true)) {
                 return@forEach
             }
@@ -3199,9 +3932,21 @@ fun initializeDatabaseSchema(ctx: Context) {
     ctx.json(
         mapOf(
             "database" to "initialized",
+            "databaseName" to databaseName,
             "statementsExecuted" to executedStatements.size
         )
     )
+    auditLog(ctx, "BASE_DATOS_INICIALIZADA", "database:$safeDatabaseName", "sentencias=${executedStatements.size}")
+}
+
+fun safeSqlIdentifier(value: String): String {
+    val normalized = value.trim()
+
+    require(Regex("[A-Za-z0-9_]+").matches(normalized)) {
+        "El nombre de la base de datos solo puede usar letras, numeros y guion bajo."
+    }
+
+    return normalized
 }
 
 // Divide el schema.sql en sentencias independientes.
@@ -3237,7 +3982,7 @@ fun safeFileExtension(filename: String, contentType: String): String {
 fun parseDate(value: String): LocalDate {
     return try {
         LocalDate.parse(value)
-    } catch (error: Exception) {
+    } catch (_: Exception) {
         throw IllegalArgumentException("La fecha debe tener formato yyyy-MM-dd.")
     }
 }
@@ -3304,6 +4049,8 @@ object PasswordService {
     private const val KEY_LENGTH = 256
     private const val SALT_LENGTH = 16
     private const val PREFIX = "pbkdf2"
+    private const val SEPARATOR = '$'
+    private const val HASH_PREFIX = "$PREFIX$SEPARATOR"
     private val random = SecureRandom()
 
     fun hash(value: String): String {
@@ -3316,17 +4063,17 @@ object PasswordService {
             ITERATIONS.toString(),
             Base64.getUrlEncoder().withoutPadding().encodeToString(salt),
             Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
-        ).joinToString("\$")
+        ).joinToString(SEPARATOR.toString())
     }
 
     fun verify(value: String, storedHash: String?): Boolean {
         if (storedHash.isNullOrBlank()) return false
 
-        if (!storedHash.startsWith("${PREFIX}\$")) {
+        if (!storedHash.startsWith(HASH_PREFIX)) {
             return legacySha256(value) == storedHash
         }
 
-        val parts = storedHash.split("\$")
+        val parts = storedHash.split(SEPARATOR)
         if (parts.size != 4) return false
 
         return try {
@@ -3336,13 +4083,13 @@ object PasswordService {
             val actual = pbkdf2(value, salt, iterations)
 
             MessageDigest.isEqual(expected, actual)
-        } catch (error: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
 
     fun needsUpgrade(storedHash: String?): Boolean {
-        return storedHash.isNullOrBlank() || !storedHash.startsWith("${PREFIX}\$")
+        return storedHash.isNullOrBlank() || !storedHash.startsWith(HASH_PREFIX)
     }
 
     private fun pbkdf2(value: String, salt: ByteArray, iterations: Int): ByteArray {

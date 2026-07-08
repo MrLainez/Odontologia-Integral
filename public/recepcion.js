@@ -9,6 +9,14 @@ const userForm = document.querySelector("#user-form");
 const userStatus = document.querySelector("#user-status");
 const usersList = document.querySelector("#users-list");
 const adminLogoutButton = document.querySelector("#admin-logout");
+const changePasswordButton = document.querySelector("#change-password-button");
+const passwordDialog = document.querySelector("#password-dialog");
+const passwordForm = document.querySelector("#password-form");
+const passwordStatus = document.querySelector("#password-status");
+const patientHistoryModal = document.querySelector("#patient-history-modal");
+const patientHistoryTitle = document.querySelector("#patient-history-title");
+const patientHistoryStatus = document.querySelector("#patient-history-status");
+const patientHistoryContent = document.querySelector("#patient-history-content");
 const receptionNav = document.querySelector(".reception-nav");
 const receptionSections = document.querySelectorAll(".reception-section");
 const patientFilter = document.querySelector("#patient-filter");
@@ -47,6 +55,7 @@ const API_CITAS_URL = `${API_BASE_URL}/api/citas`;
 const API_PACIENTES_URL = `${API_BASE_URL}/api/pacientes`;
 const API_PAGOS_URL = `${API_BASE_URL}/api/pagos`;
 const API_ADMIN_USERS_URL = `${API_BASE_URL}/api/admin/usuarios`;
+const API_ADMIN_PASSWORD_URL = `${API_BASE_URL}/api/admin/password`;
 const API_RECEPTION_REPORT_URL = `${API_BASE_URL}/api/reportes/recepcion`;
 const API_BUSINESS_HOURS_URL = `${API_BASE_URL}/api/horarios-atencion`;
 const API_HOLIDAYS_URL = `${API_BASE_URL}/api/dias-feriados`;
@@ -54,6 +63,7 @@ const API_APPOINTMENT_REQUESTS_URL = `${API_BASE_URL}/api/solicitudes-cita`;
 const API_DENTISTS_URL = `${API_BASE_URL}/api/odontologos`;
 const API_AVAILABILITY_URL = `${API_BASE_URL}/api/citas/disponibilidad`;
 const API_DENTIST_HOURS_URL = (dentistId) => `${API_BASE_URL}/api/odontologos/${dentistId}/horarios`;
+const API_PATIENT_HISTORY_URL = (patientId) => `${API_BASE_URL}/api/pacientes/${patientId}/historial`;
 
 // Proteccion simple de pantalla: requiere sesion administrativa local.
 const adminSession = JSON.parse(localStorage.getItem("adminSession") || "null");
@@ -836,6 +846,106 @@ function formatDateOnly(dateValue) {
   });
 }
 
+function formatHistoryTime(timeValue) {
+  if (!timeValue) return "--:--";
+
+  return String(timeValue).slice(0, 5);
+}
+
+function formatHistoryTimestamp(value) {
+  if (!value) return "Fecha no registrada";
+
+  return new Date(value).toLocaleString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function createHistoryAppointmentItem(appointment) {
+  const item = document.createElement("article");
+  item.className = "history-item";
+  item.innerHTML = `
+    <div>
+      <strong>${formatDateOnly(appointment.fecha)} ${escapeHtml(formatHistoryTime(appointment.hora))}</strong>
+      <span>${escapeHtml(appointment.odontologoNombre || "Por asignar")} - ${escapeHtml(appointment.estatus || "Sin estatus")}</span>
+    </div>
+    <p>${escapeHtml(appointment.tratamiento || "Sin tratamiento registrado")}</p>
+  `;
+  return item;
+}
+
+function createHistoryNoteItem(note) {
+  const item = document.createElement("article");
+  item.className = "history-item";
+  item.innerHTML = `
+    <div>
+      <strong>${formatHistoryTimestamp(note.fechaHora || note.fecha_hora)}</strong>
+      <span>Nota de evolucion</span>
+    </div>
+    <p>${escapeHtml(note.textoNota || note.texto_nota || "")}</p>
+  `;
+  return item;
+}
+
+function renderPatientHistory(history) {
+  const appointments = history.citas || [];
+  const notes = history.notasEvolucion || [];
+  const appointmentsList = document.createElement("div");
+  const notesList = document.createElement("div");
+
+  patientHistoryContent.innerHTML = "";
+  appointmentsList.className = "history-list";
+  notesList.className = "history-list";
+
+  appointments.forEach((appointment) => {
+    appointmentsList.append(createHistoryAppointmentItem(appointment));
+  });
+  notes.forEach((note) => {
+    notesList.append(createHistoryNoteItem(note));
+  });
+
+  patientHistoryContent.innerHTML = `
+    <section>
+      <h3>Citas del paciente</h3>
+      ${appointments.length ? "" : "<p class=\"empty-state\">Sin citas registradas.</p>"}
+    </section>
+    <section>
+      <h3>Notas de evolucion</h3>
+      ${notes.length ? "" : "<p class=\"empty-state\">Sin notas registradas.</p>"}
+    </section>
+  `;
+  patientHistoryContent.querySelector("section:nth-child(1)").append(appointmentsList);
+  patientHistoryContent.querySelector("section:nth-child(2)").append(notesList);
+}
+
+async function openPatientHistory(patientId, patientName) {
+  patientHistoryTitle.textContent = patientName ? `Historial de ${patientName}` : "Historial del paciente";
+  patientHistoryStatus.textContent = "Cargando historial...";
+  patientHistoryStatus.classList.remove("is-error");
+  patientHistoryContent.innerHTML = "";
+  patientHistoryModal.classList.remove("is-hidden");
+  document.body.classList.add("has-dialog");
+
+  try {
+    const history = await fetchJson(API_PATIENT_HISTORY_URL(patientId));
+    renderPatientHistory(history);
+    patientHistoryStatus.textContent = "Historial actualizado.";
+  } catch (error) {
+    patientHistoryStatus.textContent = error.message || "No fue posible cargar el historial.";
+    patientHistoryStatus.classList.add("is-error");
+  }
+}
+
+function closePatientHistory() {
+  patientHistoryModal.classList.add("is-hidden");
+  document.body.classList.remove("has-dialog");
+  patientHistoryStatus.textContent = "";
+  patientHistoryContent.innerHTML = "";
+}
+
 async function createHoliday(event) {
   event.preventDefault();
 
@@ -925,6 +1035,23 @@ function closeUserModal() {
   userStatus.classList.remove("is-error");
 }
 
+function openPasswordDialog() {
+  passwordDialog.classList.remove("is-hidden");
+  document.body.classList.add("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
+  passwordStatus.classList.remove("is-error");
+  passwordForm.elements.passwordActual.focus();
+}
+
+function closePasswordDialog() {
+  passwordDialog.classList.add("is-hidden");
+  document.body.classList.remove("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
+  passwordStatus.classList.remove("is-error");
+}
+
 // Muestra errores debajo de cada campo del formulario.
 function showFieldError(field, message) {
   const error = document.querySelector(`[data-error-for="${field.id}"]`);
@@ -972,8 +1099,8 @@ function validateUserField(field) {
     message = "Escribe un correo valido.";
   }
 
-  if (field.name === "password" && value && value.length < 6) {
-    message = "Usa al menos 6 caracteres.";
+  if (field.name === "password" && value && (value.length < 8 || !/[A-Za-z]/.test(value) || !/\d/.test(value))) {
+    message = "Usa al menos 8 caracteres, una letra y un numero.";
   }
 
   showFieldError(field, message);
@@ -1076,6 +1203,7 @@ function addPatientRow(patient, prepend = false) {
     </div>
     <div class="record-actions">
       <span class="${isActive ? "status-pill" : "muted-label"}">${isActive ? "Activo" : "Inactivo"}</span>
+      <button type="button" class="button button--secondary" data-view-patient-history>Historial</button>
       ${isActive ? `
         <button type="button" class="button button--secondary" data-edit-patient>Editar</button>
         <button type="button" class="button button--secondary" data-reset-patient-password>Contraseña</button>
@@ -1207,6 +1335,16 @@ async function resetAdminPassword(userId, password) {
   });
 }
 
+async function changeOwnAdminPassword(payload) {
+  return fetchJson(API_ADMIN_PASSWORD_URL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function deleteAdminUser(userId) {
   return fetchJson(`${API_ADMIN_USERS_URL}/${userId}`, {
     method: "DELETE"
@@ -1310,6 +1448,7 @@ agendaTable.addEventListener("click", async (event) => {
 
 openManualButton.addEventListener("click", openManualModal);
 openUserButton.addEventListener("click", openUserModal);
+changePasswordButton.addEventListener("click", openPasswordDialog);
 
 adminLogoutButton.addEventListener("click", () => {
   localStorage.removeItem("adminSession");
@@ -1439,6 +1578,11 @@ patientsList.addEventListener("click", async (event) => {
 
   const patientId = row.dataset.patientId;
 
+  if (event.target.closest("[data-view-patient-history]")) {
+    await openPatientHistory(patientId, row.dataset.patientName || "");
+    return;
+  }
+
   if (event.target.closest("[data-edit-patient]")) {
     const currentName = row.dataset.patientName || "";
     const currentEmail = row.dataset.patientEmail || "";
@@ -1478,8 +1622,8 @@ patientsList.addEventListener("click", async (event) => {
     const newPassword = window.prompt("Nueva contraseña temporal para este paciente:");
 
     if (!newPassword) return;
-    if (newPassword.length < 6) {
-      alert("La contraseña debe tener al menos 6 caracteres.");
+    if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      alert("La contraseña debe tener al menos 8 caracteres, una letra y un numero.");
       return;
     }
 
@@ -1520,8 +1664,8 @@ if (adminUserForm) {
     const payload = buildAdminUserPayload(adminUserForm);
     const submitButton = adminUserForm.querySelector("button[type='submit']");
 
-    if (!payload.nombre || !payload.email || payload.password.length < 6 || !payload.rol) {
-      adminUserStatus.textContent = "Completa nombre, correo, rol y una contraseña de al menos 6 caracteres.";
+    if (!payload.nombre || !payload.email || payload.password.length < 8 || !/[A-Za-z]/.test(payload.password) || !/\d/.test(payload.password) || !payload.rol) {
+      adminUserStatus.textContent = "Completa nombre, correo, rol y una contraseña de al menos 8 caracteres, una letra y un numero.";
       adminUserStatus.classList.add("is-error");
       return;
     }
@@ -1558,8 +1702,8 @@ if (adminUserForm) {
       const newPassword = window.prompt("Nueva contraseña temporal para este usuario:");
 
       if (!newPassword) return;
-      if (newPassword.length < 6) {
-        alert("La contraseña debe tener al menos 6 caracteres.");
+      if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+        alert("La contraseña debe tener al menos 8 caracteres, una letra y un numero.");
         return;
       }
 
@@ -1600,6 +1744,18 @@ userModal.addEventListener("click", (event) => {
   }
 });
 
+passwordDialog.addEventListener("click", (event) => {
+  if (event.target.matches("[data-close-password-dialog]")) {
+    closePasswordDialog();
+  }
+});
+
+patientHistoryModal.addEventListener("click", (event) => {
+  if (event.target.matches("[data-close-patient-history]")) {
+    closePatientHistory();
+  }
+});
+
 // Escape cierra cualquier modal abierto.
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !manualModal.classList.contains("is-hidden")) {
@@ -1608,6 +1764,14 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key === "Escape" && !userModal.classList.contains("is-hidden")) {
     closeUserModal();
+  }
+
+  if (event.key === "Escape" && !passwordDialog.classList.contains("is-hidden")) {
+    closePasswordDialog();
+  }
+
+  if (event.key === "Escape" && !patientHistoryModal.classList.contains("is-hidden")) {
+    closePatientHistory();
   }
 });
 
@@ -1680,6 +1844,34 @@ userForm.addEventListener("submit", async (event) => {
     userStatus.classList.add("is-error");
   } finally {
     submitButton.disabled = false;
+  }
+});
+
+passwordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const data = new FormData(passwordForm);
+  const payload = {
+    passwordActual: data.get("passwordActual"),
+    passwordNueva: data.get("passwordNueva")
+  };
+
+  if (!payload.passwordActual || payload.passwordNueva.length < 8 || !/[A-Za-z]/.test(payload.passwordNueva) || !/\d/.test(payload.passwordNueva)) {
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.classList.add("is-error");
+    return;
+  }
+
+  passwordStatus.classList.remove("is-error");
+  passwordStatus.textContent = "Guardando contraseña...";
+
+  try {
+    await changeOwnAdminPassword(payload);
+    passwordStatus.textContent = "Contraseña actualizada correctamente.";
+    window.setTimeout(closePasswordDialog, 700);
+  } catch (error) {
+    passwordStatus.textContent = error.message || "No fue posible actualizar la contraseña.";
+    passwordStatus.classList.add("is-error");
   }
 });
 

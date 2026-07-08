@@ -4,6 +4,7 @@ const toothMenuTitle = document.querySelector("#tooth-menu-title");
 const noteInput = document.querySelector("#evolution-note");
 const addNoteButton = document.querySelector("#add-note");
 const noteList = document.querySelector("#note-list");
+const appointmentHistoryList = document.querySelector("#appointment-history-list");
 const noteStatus = document.querySelector("#note-status");
 const patientSearch = document.querySelector("#patient-search");
 const patientName = document.querySelector("#patient-name");
@@ -11,6 +12,10 @@ const patientAge = document.querySelector("#patient-age");
 const patientAllergies = document.querySelector("#patient-allergies");
 const patientLastVisit = document.querySelector("#patient-last-visit");
 const adminLogoutButton = document.querySelector("#admin-logout");
+const changePasswordButton = document.querySelector("#change-password-button");
+const passwordDialog = document.querySelector("#password-dialog");
+const passwordForm = document.querySelector("#password-form");
+const passwordStatus = document.querySelector("#password-status");
 const patientResults = document.querySelector("#patient-results");
 const clinicalFileForm = document.querySelector("#clinical-file-form");
 const clinicalAgeInput = document.querySelector("#clinical-age");
@@ -24,6 +29,8 @@ const clinicalImageList = document.querySelector("#clinical-image-list");
 
 // Ruta base de la API local en Kotlin/Javalin.
 const API_BASE_URL = window.location.origin;
+const API_ADMIN_PASSWORD_URL = `${API_BASE_URL}/api/admin/password`;
+const API_PATIENT_HISTORY_URL = (patientId) => `${API_BASE_URL}/api/pacientes/${patientId}/historial`;
 
 // Proteccion simple de pantalla: requiere sesion de odontologo o admin.
 const adminSession = JSON.parse(localStorage.getItem("adminSession") || "null");
@@ -151,6 +158,48 @@ async function fetchFormData(url, formData) {
   return data;
 }
 
+async function fetchProtectedBlob(url) {
+  const token = localStorage.getItem("authToken");
+  const response = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error("No fue posible cargar el archivo clinico.");
+  }
+
+  return response.blob();
+}
+
+function openPasswordDialog() {
+  passwordDialog.classList.remove("is-hidden");
+  document.body.classList.add("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
+  passwordStatus.classList.remove("is-error");
+  passwordForm.elements.passwordActual.focus();
+}
+
+function closePasswordDialog() {
+  passwordDialog.classList.add("is-hidden");
+  document.body.classList.remove("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
+  passwordStatus.classList.remove("is-error");
+}
+
+async function changeOwnAdminPassword(payload) {
+  return fetchJson(API_ADMIN_PASSWORD_URL, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 // Formato visual para notas e historial clinico.
 function formatTimestamp(value) {
   const date = value ? new Date(value) : new Date();
@@ -159,6 +208,20 @@ function formatTimestamp(value) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(date);
+}
+
+function formatDateOnly(value) {
+  if (!value) return "Fecha no registrada";
+
+  return new Date(`${value}T00:00:00`).toLocaleDateString("es-MX", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatTimeOnly(value) {
+  return value ? String(value).slice(0, 5) : "--:--";
 }
 
 function clearStatusClasses(surfaceButton) {
@@ -251,6 +314,42 @@ function paintOdontogram(odontogram) {
 }
 
 // Renderiza las notas historicas del expediente.
+function renderAppointmentHistory(appointments) {
+  appointmentHistoryList.innerHTML = "";
+
+  if (!appointments.length) {
+    const emptyItem = document.createElement("article");
+    emptyItem.className = "note-item";
+    emptyItem.innerHTML = "<p>Sin citas registradas.</p>";
+    appointmentHistoryList.append(emptyItem);
+    return;
+  }
+
+  appointments.forEach((appointment) => {
+    const item = document.createElement("article");
+    item.className = "note-item";
+    item.innerHTML = `
+      <time>${formatDateOnly(appointment.fecha)} ${escapeHtml(formatTimeOnly(appointment.hora))}</time>
+      <p><strong>${escapeHtml(appointment.odontologoNombre || "Por asignar")}</strong></p>
+      <p>${escapeHtml(appointment.tratamiento || "Sin tratamiento registrado")} - ${escapeHtml(appointment.estatus || "Sin estatus")}</p>
+    `;
+    appointmentHistoryList.append(item);
+  });
+}
+
+async function loadPatientHistory(patientId) {
+  try {
+    const history = await fetchJson(API_PATIENT_HISTORY_URL(patientId));
+    renderAppointmentHistory(history.citas || []);
+  } catch (error) {
+    appointmentHistoryList.innerHTML = `
+      <article class="note-item">
+        <p>No fue posible cargar el historial de citas.</p>
+      </article>
+    `;
+  }
+}
+
 function renderNotes(notes) {
   noteList.innerHTML = "";
 
@@ -286,13 +385,14 @@ function renderClinicalImages(images) {
 function createClinicalImageItem(image) {
   const item = document.createElement("article");
   const isImage = String(image.contentType || "").startsWith("image/");
+  const previewLabel = isImage ? "Cargando imagen..." : "Cargando PDF...";
 
   item.className = "clinical-image-item";
   item.innerHTML = `
-    <a class="clinical-image-preview" href="${escapeHtml(image.url)}" target="_blank" rel="noopener">
+    <a class="clinical-image-preview" href="#" target="_blank" rel="noopener" data-protected-file>
       ${isImage
-        ? `<img src="${escapeHtml(image.url)}" alt="${escapeHtml(image.descripcion || image.nombreOriginal || "Imagen clinica")}">`
-        : `<span>PDF</span>`}
+        ? `<span>${previewLabel}</span>`
+        : `<span>${previewLabel}</span>`}
     </a>
     <div>
       <strong>${escapeHtml(image.tipo || "IMAGEN")}</strong>
@@ -301,7 +401,29 @@ function createClinicalImageItem(image) {
     </div>
   `;
 
+  loadProtectedClinicalImagePreview(item, image, isImage);
+
   return item;
+}
+
+async function loadProtectedClinicalImagePreview(item, image, isImage) {
+  const link = item.querySelector("[data-protected-file]");
+
+  try {
+    const blob = await fetchProtectedBlob(`${API_BASE_URL}${image.url}`);
+    const objectUrl = URL.createObjectURL(blob);
+    link.href = objectUrl;
+
+    if (isImage) {
+      link.innerHTML = `<img src="${objectUrl}" alt="${escapeHtml(image.descripcion || image.nombreOriginal || "Imagen clinica")}">`;
+    } else {
+      link.innerHTML = "<span>PDF</span>";
+    }
+  } catch (error) {
+    link.removeAttribute("href");
+    link.innerHTML = "<span>No disponible</span>";
+    link.addEventListener("click", (event) => event.preventDefault());
+  }
 }
 
 // Llena la cabecera clinica del paciente activo.
@@ -334,6 +456,7 @@ async function loadPatientRecord(patientId) {
     paintOdontogram(expediente.odontograma || []);
     renderNotes(expediente.notasEvolucion || []);
     renderClinicalImages(expediente.imagenesClinicas || []);
+    await loadPatientHistory(patientId);
     noteStatus.textContent = "Expediente cargado correctamente.";
     imageStatus.textContent = "";
   } catch (error) {
@@ -683,12 +806,50 @@ document.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeToothMenu();
+    if (!passwordDialog.classList.contains("is-hidden")) {
+      closePasswordDialog();
+    }
   }
 });
 
 addNoteButton.addEventListener("click", addEvolutionNote);
 clinicalFileForm.addEventListener("submit", saveClinicalFile);
 clinicalImageForm.addEventListener("submit", uploadClinicalImage);
+changePasswordButton.addEventListener("click", openPasswordDialog);
+
+passwordDialog.addEventListener("click", (event) => {
+  if (event.target.matches("[data-close-password-dialog]")) {
+    closePasswordDialog();
+  }
+});
+
+passwordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const data = new FormData(passwordForm);
+  const payload = {
+    passwordActual: data.get("passwordActual"),
+    passwordNueva: data.get("passwordNueva")
+  };
+
+  if (!payload.passwordActual || payload.passwordNueva.length < 8 || !/[A-Za-z]/.test(payload.passwordNueva) || !/\d/.test(payload.passwordNueva)) {
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.classList.add("is-error");
+    return;
+  }
+
+  passwordStatus.classList.remove("is-error");
+  passwordStatus.textContent = "Guardando contraseña...";
+
+  try {
+    await changeOwnAdminPassword(payload);
+    passwordStatus.textContent = "Contraseña actualizada correctamente.";
+    window.setTimeout(closePasswordDialog, 700);
+  } catch (error) {
+    passwordStatus.textContent = error.message || "No fue posible actualizar la contraseña.";
+    passwordStatus.classList.add("is-error");
+  }
+});
 
 adminLogoutButton.addEventListener("click", () => {
   localStorage.removeItem("adminSession");
@@ -702,6 +863,7 @@ if (activePatientId) {
   loadPatientRecord(activePatientId);
 } else {
   noteStatus.textContent = "Busca y selecciona un paciente para comenzar.";
+  renderAppointmentHistory([]);
   renderNotes([]);
   renderClinicalImages([]);
 }

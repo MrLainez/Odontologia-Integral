@@ -27,6 +27,7 @@ No deben usarse en produccion.
 
 - Correo: `prueba4@correo.com`
 - Contrasena: `123456`
+- Nota: este paciente puede existir como dato legado de desarrollo. Para nuevos pacientes usa una contrasena de al menos 8 caracteres con letras y numeros, por ejemplo `Paciente123`.
 
 ## Acceso
 

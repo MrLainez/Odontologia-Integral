@@ -348,6 +348,13 @@ textarea:focus {
   padding-inline: 14px;
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .welcome-panel {
   display: grid;
   gap: 16px;
@@ -1278,6 +1285,54 @@ textarea:focus {
   width: 100%;
 }
 
+.history-modal {
+  width: min(100%, 780px);
+}
+
+.patient-history-content {
+  display: grid;
+  gap: 18px;
+  max-height: min(68vh, 680px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.patient-history-content h3,
+.history-subsection h3 {
+  margin: 0 0 10px;
+  font-size: 1rem;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.history-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+}
+
+.history-item span {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.history-item p {
+  margin: 0;
+}
+
+.empty-state {
+  margin: 0;
+  color: var(--color-muted);
+}
+
 .users-list {
   display: grid;
   gap: 10px;
@@ -2017,6 +2072,10 @@ textarea:focus {
   display: grid;
   gap: 10px;
   margin-top: 16px;
+}
+
+.history-subsection {
+  margin-top: 18px;
 }
 
 .note-item {

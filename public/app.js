@@ -5,6 +5,10 @@ const registerForm = document.querySelector("#register-form");
 const loginStatus = document.querySelector("#login-status");
 const rememberEmailInput = document.querySelector("#remember-email");
 const logoutButton = document.querySelector("#logout-button");
+const changePasswordButton = document.querySelector("#change-password-button");
+const passwordDialog = document.querySelector("#password-dialog");
+const passwordForm = document.querySelector("#password-form");
+const passwordStatus = document.querySelector("#password-status");
 const passwordInput = document.querySelector("#password");
 const togglePasswordButton = document.querySelector("#toggle-password");
 const appointmentList = document.querySelector("#appointment-list");
@@ -32,6 +36,7 @@ const PATIENT_RECORD_ENDPOINT = (patientId) => `${API_BASE_URL}/api/pacientes/${
 const CANCEL_APPOINTMENT_ENDPOINT = (patientId, appointmentId) => (
   `${API_BASE_URL}/api/pacientes/${patientId}/citas/${appointmentId}/cancelar`
 );
+const CHANGE_PATIENT_PASSWORD_ENDPOINT = `${API_BASE_URL}/api/pacientes/password`;
 
 let selectedAppointmentCard = null;
 
@@ -46,7 +51,9 @@ if (quickRequestDate) {
 // Validaciones simples del formulario de login y solicitud.
 const validators = {
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Escribe un correo valido.",
-  password: (value) => value.trim().length >= 6 || "La contrasena debe tener al menos 6 caracteres."
+  password: (value) => (
+    value.trim().length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value)
+  ) || "La contrasena debe tener al menos 8 caracteres, una letra y un numero."
 };
 
 function showFieldError(field, message) {
@@ -122,6 +129,22 @@ function closeCancelDialog() {
   selectedAppointmentCard = null;
   cancelDialog.classList.add("is-hidden");
   document.body.classList.remove("has-dialog");
+}
+
+function openPasswordDialog() {
+  passwordDialog.classList.remove("is-hidden");
+  document.body.classList.add("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
+  passwordStatus.classList.remove("is-error");
+  passwordForm.elements.passwordActual.focus();
+}
+
+function closePasswordDialog() {
+  passwordDialog.classList.add("is-hidden");
+  document.body.classList.remove("has-dialog");
+  passwordForm.reset();
+  passwordStatus.textContent = "";
 }
 
 // Muestra el estado vacio cuando ya no quedan citas.
@@ -501,6 +524,42 @@ logoutButton.addEventListener("click", () => {
   resetPatientSession();
   appointmentList.innerHTML = "";
   showLogin();
+});
+
+changePasswordButton.addEventListener("click", openPasswordDialog);
+
+passwordDialog.addEventListener("click", (event) => {
+  if (event.target.matches("[data-close-password-dialog]")) {
+    closePasswordDialog();
+  }
+});
+
+passwordForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const data = new FormData(passwordForm);
+  const payload = {
+    passwordActual: data.get("passwordActual"),
+    passwordNueva: data.get("passwordNueva")
+  };
+
+  if (!payload.passwordActual || payload.passwordNueva.length < 6) {
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.classList.add("is-error");
+    return;
+  }
+
+  passwordStatus.classList.remove("is-error");
+  passwordStatus.textContent = "Guardando contraseña...";
+
+  try {
+    await putJson(CHANGE_PATIENT_PASSWORD_ENDPOINT, payload);
+    passwordStatus.textContent = "Contraseña actualizada correctamente.";
+    window.setTimeout(closePasswordDialog, 700);
+  } catch (error) {
+    passwordStatus.textContent = error.message || "No fue posible actualizar la contraseña.";
+    passwordStatus.classList.add("is-error");
+  }
 });
 
 // RF4: abre la alerta al presionar "Cancelar Cita".
