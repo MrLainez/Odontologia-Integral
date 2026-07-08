@@ -33,3 +33,20 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
 application {
     mainClass.set("AppKt")
 }
+
+distributions {
+    main {
+        contents {
+            from("public") {
+                into("public")
+            }
+            from("database") {
+                into("database")
+            }
+            from("config.example.properties")
+            from("config.production.example.properties")
+            from("README.md")
+            from("DEFAULT_CREDENTIALS.md")
+        }
+    }
+}

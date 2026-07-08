@@ -35,6 +35,9 @@ expediente, notas, historial y auditoria.
 No subas `config.properties` al repositorio. En servidor usa variables de entorno o un
 `config.properties` privado basado en `config.example.properties`.
 
+Para generar el paquete ejecutable y preparar un servidor, revisa
+`DEPLOYMENT.md`.
+
 Valores minimos a revisar antes de desplegar:
 
 - `APP_ENV=production`

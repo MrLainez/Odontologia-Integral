@@ -13,6 +13,8 @@ build/
 ### Configuracion local ###
 config.properties
 config.local.properties
+.env
+*.env
 
 ### Eclipse ###
 .apt_generated
