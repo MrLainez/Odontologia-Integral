@@ -1364,6 +1364,16 @@ textarea:focus {
   max-width: 320px;
 }
 
+.panel-filter {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.panel-filter label {
+  font-weight: 700;
+}
+
 .records-list {
   display: grid;
   gap: 10px;

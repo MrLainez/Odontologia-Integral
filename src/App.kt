@@ -73,18 +73,21 @@ data class AgendarCitaRequest(
     val odontologoId: Int = 0,
     val fecha: String = "",
     val hora: String = "",
-    val tratamiento: String = ""
+    val tratamiento: String = "",
+    val duracionMinutos: Int = 60
 )
 
 data class CrearCitaRequest(
     val pacienteId: Int = 0,
     val odontologoId: Int = 0,
     val fechaHora: String = "",
-    val motivo: String = ""
+    val motivo: String = "",
+    val duracionMinutos: Int = 60
 )
 
 data class AceptarSolicitudCitaRequest(
-    val odontologoId: Int = 0
+    val odontologoId: Int = 0,
+    val duracionMinutos: Int = 60
 )
 
 data class ReprogramarCitaRequest(
@@ -841,6 +844,11 @@ object BusinessHoursRepository {
     }
 
     fun slotsForDate(date: LocalDate): List<LocalTime> {
+        val window = workingWindowForDate(date) ?: return emptyList()
+        return generateHalfHourSlots(window.first, window.second)
+    }
+
+    fun workingWindowForDate(date: LocalDate): Pair<LocalTime, LocalTime>? {
         ensureDefaults()
 
         val sql = """
@@ -856,11 +864,11 @@ object BusinessHoursRepository {
                 statement.setInt(1, dayOfWeek)
 
                 statement.executeQuery().use { result ->
-                    if (!result.next() || !result.getBoolean("activo")) return emptyList()
+                    if (!result.next() || !result.getBoolean("activo")) return null
 
-                    val start = result.getTime("hora_inicio")?.toLocalTime() ?: return emptyList()
-                    val end = result.getTime("hora_fin")?.toLocalTime() ?: return emptyList()
-                    return generateHalfHourSlots(start, end)
+                    val start = result.getTime("hora_inicio")?.toLocalTime() ?: return null
+                    val end = result.getTime("hora_fin")?.toLocalTime() ?: return null
+                    return start to end
                 }
             }
         }
@@ -1070,8 +1078,20 @@ object DentistHoursRepository {
     }
 
     fun slotsForDate(date: LocalDate, odontologistId: Int?): List<LocalTime> {
+        val window = workingWindowForDate(date, odontologistId) ?: return emptyList()
+        return generateHalfHourSlots(window.first, window.second)
+    }
+
+    fun isWithinWorkingHours(date: LocalDate, start: LocalTime, durationMinutes: Int, odontologistId: Int?): Boolean {
+        val window = workingWindowForDate(date, odontologistId) ?: return false
+        val end = start.plusMinutes(durationMinutes.toLong())
+
+        return !start.isBefore(window.first) && !end.isAfter(window.second)
+    }
+
+    fun workingWindowForDate(date: LocalDate, odontologistId: Int?): Pair<LocalTime, LocalTime>? {
         if (odontologistId == null || odontologistId <= 0) {
-            return BusinessHoursRepository.slotsForDate(date)
+            return BusinessHoursRepository.workingWindowForDate(date)
         }
 
         val dayOfWeek = date.dayOfWeek.value
@@ -1088,12 +1108,12 @@ object DentistHoursRepository {
                 statement.setInt(2, dayOfWeek)
 
                 statement.executeQuery().use { result ->
-                    if (!result.next()) return BusinessHoursRepository.slotsForDate(date)
-                    if (!result.getBoolean("activo")) return emptyList()
+                    if (!result.next()) return BusinessHoursRepository.workingWindowForDate(date)
+                    if (!result.getBoolean("activo")) return null
 
-                    val start = result.getTime("hora_inicio")?.toLocalTime() ?: return emptyList()
-                    val end = result.getTime("hora_fin")?.toLocalTime() ?: return emptyList()
-                    return generateHalfHourSlots(start, end)
+                    val start = result.getTime("hora_inicio")?.toLocalTime() ?: return null
+                    val end = result.getTime("hora_fin")?.toLocalTime() ?: return null
+                    return start to end
                 }
             }
         }
@@ -1304,7 +1324,8 @@ object AppointmentRepository {
             odontologoId = request.odontologoId,
             date = appointmentDate,
             time = appointmentTime,
-            treatment = request.tratamiento
+            treatment = request.tratamiento,
+            durationMinutes = normalizeAppointmentDuration(request.duracionMinutos)
         )
     }
 
@@ -1321,7 +1342,8 @@ object AppointmentRepository {
             odontologoId = odontologistId,
             date = appointmentDateTime.toLocalDate(),
             time = appointmentDateTime.toLocalTime(),
-            treatment = request.motivo
+            treatment = request.motivo,
+            durationMinutes = normalizeAppointmentDuration(request.duracionMinutos)
         )
     }
 
@@ -1350,7 +1372,7 @@ object AppointmentRepository {
 
     fun listByDate(date: LocalDate): List<Map<String, Any?>> {
         val sql = """
-            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus,
+            SELECT c.id, c.fecha, c.hora, c.duracion_minutos, c.tratamiento, c.estatus,
                    p.id AS paciente_id, p.nombre AS paciente_nombre,
                    o.id AS odontologo_id, o.nombre AS odontologo_nombre
             FROM citas c
@@ -1372,6 +1394,7 @@ object AppointmentRepository {
                                 "id" to result.getInt("id"),
                                 "fecha" to result.getDate("fecha")?.toLocalDate()?.toString(),
                                 "hora" to result.getTime("hora")?.toLocalTime()?.toString(),
+                                "duracionMinutos" to result.getInt("duracion_minutos"),
                                 "tratamiento" to result.getString("tratamiento"),
                                 "estatus" to result.getString("estatus"),
                                 "pacienteId" to result.getInt("paciente_id"),
@@ -1390,7 +1413,7 @@ object AppointmentRepository {
 
     fun listByPatient(patientId: Int): List<Map<String, Any?>> {
         val sql = """
-            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus, o.nombre AS odontologo_nombre
+            SELECT c.id, c.fecha, c.hora, c.duracion_minutos, c.tratamiento, c.estatus, o.nombre AS odontologo_nombre
             FROM citas c
             LEFT JOIN odontologos o ON o.id = c.odontologo_id
             WHERE c.paciente_id = ?
@@ -1411,6 +1434,7 @@ object AppointmentRepository {
                                 "id" to result.getInt("id"),
                                 "fecha" to result.getDate("fecha")?.toLocalDate()?.toString(),
                                 "hora" to result.getTime("hora")?.toLocalTime()?.toString(),
+                                "duracionMinutos" to result.getInt("duracion_minutos"),
                                 "tratamiento" to result.getString("tratamiento"),
                                 "estatus" to result.getString("estatus"),
                                 "odontologoNombre" to (result.getString("odontologo_nombre") ?: "Por asignar")
@@ -1424,15 +1448,23 @@ object AppointmentRepository {
         return appointments
     }
 
-    fun availability(date: LocalDate, excludedAppointmentId: Int? = null, odontologistId: Int? = null): List<Map<String, Any?>> {
-        val busyTimes = findBusyTimes(date, excludedAppointmentId, odontologistId)
+    fun availability(
+        date: LocalDate,
+        excludedAppointmentId: Int? = null,
+        odontologistId: Int? = null,
+        durationMinutes: Int = 60
+    ): List<Map<String, Any?>> {
+        val duration = normalizeAppointmentDuration(durationMinutes)
         val configuredTimes = DentistHoursRepository.slotsForDate(date, odontologistId)
 
         return configuredTimes.map { time ->
             mapOf(
                 "hora" to formatDisplayTime(time),
                 "valor" to time.toString(),
-                "disponible" to !busyTimes.contains(time)
+                "disponible" to (
+                    DentistHoursRepository.isWithinWorkingHours(date, time, duration, odontologistId)
+                        && !isSlotTaken(date, time, duration, excludedAppointmentId, odontologistId)
+                )
             )
         }
     }
@@ -1479,7 +1511,8 @@ object AppointmentRepository {
                     throw AppointmentPolicyException()
                 }
 
-                if (isSlotTaken(connection, newDate, newTime, appointmentId)) {
+                val currentDuration = findAppointmentDuration(connection, appointmentId) ?: 60
+                if (isSlotTaken(connection, newDate, newTime, currentDuration, appointmentId)) {
                     connection.rollback()
                     throw AppointmentConflictException()
                 }
@@ -1516,8 +1549,11 @@ object AppointmentRepository {
         odontologoId: Int,
         date: LocalDate,
         time: LocalTime,
-        treatment: String
+        treatment: String,
+        durationMinutes: Int
     ): Int {
+        val duration = normalizeAppointmentDuration(durationMinutes)
+
         Database.connection().use { connection ->
             connection.autoCommit = false
 
@@ -1530,13 +1566,18 @@ object AppointmentRepository {
                     throw DentistNotFoundException()
                 }
 
-                // Regla critica: no permitir dos citas activas en la misma fecha y hora.
-                if (isSlotTaken(connection, date, time, odontologoId = odontologoId)) {
+                if (!DentistHoursRepository.isWithinWorkingHours(date, time, duration, odontologoId)) {
                     connection.rollback()
                     throw AppointmentConflictException()
                 }
 
-                val id = insertAppointment(connection, pacienteId, odontologoId, date, time, treatment)
+                // Regla critica: no permitir traslapes entre citas activas del mismo odontologo.
+                if (isSlotTaken(connection, date, time, duration, odontologoId = odontologoId)) {
+                    connection.rollback()
+                    throw AppointmentConflictException()
+                }
+
+                val id = insertAppointment(connection, pacienteId, odontologoId, date, time, duration, treatment)
                 connection.commit()
                 return id
             } catch (error: Exception) {
@@ -1552,79 +1593,94 @@ object AppointmentRepository {
         connection: Connection,
         date: LocalDate,
         time: LocalTime,
+        durationMinutes: Int,
         excludedAppointmentId: Int? = null,
         odontologoId: Int? = null
     ): Boolean {
+        return hasOverlappingAppointment(connection, date, time, durationMinutes, excludedAppointmentId, odontologoId)
+    }
+
+    private fun isSlotTaken(
+        date: LocalDate,
+        time: LocalTime,
+        durationMinutes: Int,
+        excludedAppointmentId: Int? = null,
+        odontologoId: Int? = null
+    ): Boolean {
+        Database.connection().use { connection ->
+            return hasOverlappingAppointment(connection, date, time, durationMinutes, excludedAppointmentId, odontologoId)
+        }
+    }
+
+    private fun hasOverlappingAppointment(
+        connection: Connection,
+        date: LocalDate,
+        time: LocalTime,
+        durationMinutes: Int,
+        excludedAppointmentId: Int?,
+        odontologoId: Int?
+    ): Boolean {
+        val requestedStart = LocalDateTime.of(date, time)
+        val requestedEnd = requestedStart.plusMinutes(durationMinutes.toLong())
         val sql = """
-            SELECT COUNT(*) AS total
+            SELECT fecha, hora, duracion_minutos
             FROM citas
-            WHERE fecha = ? AND hora = ? AND estatus <> 'CANCELADA'
+            WHERE fecha = ? AND estatus <> 'CANCELADA'
               AND (? IS NULL OR id <> ?)
               AND (? IS NULL OR odontologo_id = ?)
         """.trimIndent()
 
         connection.prepareStatement(sql).use { statement ->
             statement.setDate(1, Date.valueOf(date))
-            statement.setTime(2, Time.valueOf(time))
             if (excludedAppointmentId == null) {
+                statement.setNull(2, java.sql.Types.INTEGER)
                 statement.setNull(3, java.sql.Types.INTEGER)
-                statement.setNull(4, java.sql.Types.INTEGER)
             } else {
+                statement.setInt(2, excludedAppointmentId)
                 statement.setInt(3, excludedAppointmentId)
-                statement.setInt(4, excludedAppointmentId)
             }
             if (odontologoId == null) {
+                statement.setNull(4, java.sql.Types.INTEGER)
                 statement.setNull(5, java.sql.Types.INTEGER)
-                statement.setNull(6, java.sql.Types.INTEGER)
             } else {
+                statement.setInt(4, odontologoId)
                 statement.setInt(5, odontologoId)
-                statement.setInt(6, odontologoId)
             }
 
             statement.executeQuery().use { result ->
-                result.next()
-                return result.getInt("total") > 0
+                while (result.next()) {
+                    val existingDate = result.getDate("fecha")?.toLocalDate() ?: continue
+                    val existingTime = result.getTime("hora")?.toLocalTime() ?: continue
+                    val existingDuration = result.getInt("duracion_minutos").takeIf { it > 0 } ?: 60
+                    val existingStart = LocalDateTime.of(existingDate, existingTime)
+                    val existingEnd = existingStart.plusMinutes(existingDuration.toLong())
+
+                    if (requestedStart.isBefore(existingEnd) && requestedEnd.isAfter(existingStart)) {
+                        return true
+                    }
+                }
+
+                return false
             }
         }
     }
 
-    private fun findBusyTimes(date: LocalDate, excludedAppointmentId: Int?, odontologistId: Int?): Set<LocalTime> {
+    private fun findAppointmentDuration(connection: Connection, appointmentId: Int): Int? {
         val sql = """
-            SELECT hora
+            SELECT duracion_minutos
             FROM citas
-            WHERE fecha = ? AND estatus <> 'CANCELADA'
-              AND (? IS NULL OR id <> ?)
-              AND (? IS NULL OR odontologo_id = ?)
+            WHERE id = ?
+            LIMIT 1
         """.trimIndent()
-        val times = mutableSetOf<LocalTime>()
 
-        Database.connection().use { connection ->
-            connection.prepareStatement(sql).use { statement ->
-                statement.setDate(1, Date.valueOf(date))
-                if (excludedAppointmentId == null) {
-                    statement.setNull(2, java.sql.Types.INTEGER)
-                    statement.setNull(3, java.sql.Types.INTEGER)
-                } else {
-                    statement.setInt(2, excludedAppointmentId)
-                    statement.setInt(3, excludedAppointmentId)
-                }
-                if (odontologistId == null) {
-                    statement.setNull(4, java.sql.Types.INTEGER)
-                    statement.setNull(5, java.sql.Types.INTEGER)
-                } else {
-                    statement.setInt(4, odontologistId)
-                    statement.setInt(5, odontologistId)
-                }
+        connection.prepareStatement(sql).use { statement ->
+            statement.setInt(1, appointmentId)
 
-                statement.executeQuery().use { result ->
-                    while (result.next()) {
-                        result.getTime("hora")?.toLocalTime()?.let(times::add)
-                    }
-                }
+            statement.executeQuery().use { result ->
+                if (!result.next()) return null
+                return result.getInt("duracion_minutos").takeIf { it > 0 }
             }
         }
-
-        return times
     }
 
     private fun insertAppointment(
@@ -1633,11 +1689,12 @@ object AppointmentRepository {
         odontologoId: Int,
         date: LocalDate,
         time: LocalTime,
+        durationMinutes: Int,
         treatment: String
     ): Int {
         val sql = """
-            INSERT INTO citas (paciente_id, odontologo_id, fecha, hora, tratamiento, estatus)
-            VALUES (?, ?, ?, ?, ?, 'CONFIRMADA')
+            INSERT INTO citas (paciente_id, odontologo_id, fecha, hora, duracion_minutos, tratamiento, estatus)
+            VALUES (?, ?, ?, ?, ?, ?, 'CONFIRMADA')
         """.trimIndent()
 
         connection.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS).use { statement ->
@@ -1645,7 +1702,8 @@ object AppointmentRepository {
             statement.setInt(2, odontologoId)
             statement.setDate(3, Date.valueOf(date))
             statement.setTime(4, Time.valueOf(time))
-            statement.setString(5, treatment.trim())
+            statement.setInt(5, durationMinutes)
+            statement.setString(6, treatment.trim())
             statement.executeUpdate()
 
             statement.generatedKeys.use { keys ->
@@ -1720,7 +1778,7 @@ object PatientHistoryRepository {
 
     private fun findAppointments(connection: Connection, patientId: Int): List<Map<String, Any?>> {
         val sql = """
-            SELECT c.id, c.fecha, c.hora, c.tratamiento, c.estatus,
+            SELECT c.id, c.fecha, c.hora, c.duracion_minutos, c.tratamiento, c.estatus,
                    c.odontologo_id, o.nombre AS odontologo_nombre
             FROM citas c
             LEFT JOIN odontologos o ON o.id = c.odontologo_id
@@ -1739,6 +1797,7 @@ object PatientHistoryRepository {
                             "id" to result.getInt("id"),
                             "fecha" to result.getDate("fecha")?.toLocalDate()?.toString(),
                             "hora" to result.getTime("hora")?.toLocalTime()?.toString(),
+                            "duracionMinutos" to result.getInt("duracion_minutos"),
                             "tratamiento" to result.getString("tratamiento"),
                             "estatus" to result.getString("estatus"),
                             "odontologoId" to result.getObject("odontologo_id"),
@@ -1929,7 +1988,7 @@ object AppointmentRequestRepository {
         return requests
     }
 
-    fun accept(id: Int, assignedOdontologistId: Int? = null): Int {
+    fun accept(id: Int, assignedOdontologistId: Int? = null, durationMinutes: Int = 60): Int {
         val request = findPending(id) ?: throw AppointmentRequestNotFoundException()
         val date = request["fecha"] as LocalDate
         val time = request["hora"] as LocalTime
@@ -1943,7 +2002,8 @@ object AppointmentRequestRepository {
             CrearCitaRequest(
                 pacienteId = patientId,
                 fechaHora = "${date}T${time}",
-                motivo = reason
+                motivo = reason,
+                duracionMinutos = durationMinutes
             ),
             odontologistId
         )
@@ -2414,16 +2474,21 @@ object PaymentRepository {
         error("No fue posible obtener el id del pago registrado.")
     }
 
-    fun list(): List<Map<String, Any?>> {
+    fun list(patientFilter: String = ""): List<Map<String, Any?>> {
+        val normalizedFilter = patientFilter.trim()
         val sql = """
             SELECT id, paciente_nombre, concepto, monto, metodo, fecha_registro
             FROM pagos
+            WHERE (? = '' OR paciente_nombre LIKE ?)
             ORDER BY fecha_registro DESC
         """.trimIndent()
         val payments = mutableListOf<Map<String, Any?>>()
 
         Database.connection().use { connection ->
             connection.prepareStatement(sql).use { statement ->
+                statement.setString(1, normalizedFilter)
+                statement.setString(2, "%$normalizedFilter%")
+
                 statement.executeQuery().use { result ->
                     while (result.next()) {
                         payments.add(
@@ -2654,6 +2719,14 @@ fun validateFutureDateTime(value: LocalDateTime, field: String) {
     if (value.isBefore(LocalDateTime.now())) {
         throw IllegalArgumentException("$field debe ser una fecha y hora futura.")
     }
+}
+
+fun normalizeAppointmentDuration(value: Int): Int {
+    if (value !in 30..240 || value % 30 != 0) {
+        throw IllegalArgumentException("La duracion de la cita debe estar entre 30 y 240 minutos, en intervalos de 30 minutos.")
+    }
+
+    return value
 }
 
 fun requireRoles(ctx: Context, vararg roles: String): Boolean {
@@ -3218,6 +3291,7 @@ fun getAppointmentAvailability(ctx: Context) {
     val requestedDate = ctx.queryParam("fecha")?.trim()
     val excludedAppointmentId = ctx.queryParam("excluirCitaId")?.toIntOrNull()
     val odontologistId = ctx.queryParam("odontologoId")?.toIntOrNull()?.takeIf { it > 0 }
+    val durationMinutes = ctx.queryParam("duracionMinutos")?.toIntOrNull() ?: 60
 
     if (requestedDate.isNullOrBlank()) {
         return badRequest(ctx, "La fecha es obligatoria.")
@@ -3233,7 +3307,13 @@ fun getAppointmentAvailability(ctx: Context) {
         mapOf(
             "fecha" to appointmentDate.toString(),
             "odontologoId" to odontologistId,
-            "horarios" to AppointmentRepository.availability(appointmentDate, excludedAppointmentId, odontologistId)
+            "duracionMinutos" to normalizeAppointmentDuration(durationMinutes),
+            "horarios" to AppointmentRepository.availability(
+                appointmentDate,
+                excludedAppointmentId,
+                odontologistId,
+                durationMinutes
+            )
         )
     )
 }
@@ -3252,6 +3332,7 @@ fun scheduleAppointment(ctx: Context) {
 
     try {
         normalizeRequiredText(request.tratamiento, "Tratamiento", 3, 160)
+        normalizeAppointmentDuration(request.duracionMinutos)
         validateFutureDateTime(LocalDateTime.of(parseDate(request.fecha), parseTime(request.hora)), "La cita")
         val appointmentId = AppointmentRepository.schedule(request)
         ctx.status(HttpStatus.CREATED).json(
@@ -3273,7 +3354,13 @@ fun scheduleAppointment(ctx: Context) {
 
 // GET /api/pagos: devuelve la bitacora de pagos registrada.
 fun listPayments(ctx: Context) {
-    ctx.json(PaymentRepository.list())
+    val patientFilter = ctx.queryParam("paciente")?.trim().orEmpty()
+
+    if (patientFilter.length > 120) {
+        return badRequest(ctx, "El filtro de paciente no debe exceder 120 caracteres.")
+    }
+
+    ctx.json(PaymentRepository.list(patientFilter))
 }
 
 // POST /api/pagos: guarda un pago operativo simple.
@@ -3428,9 +3515,10 @@ fun createAppointment(ctx: Context) {
 
     try {
         normalizeRequiredText(request.motivo, "Motivo", 3, 160)
+        normalizeAppointmentDuration(request.duracionMinutos)
         validateFutureDateTime(parseDateTime(request.fechaHora), "La cita")
         val appointmentId = AppointmentRepository.create(request)
-        auditLog(ctx, "CITA_CREADA", "cita:$appointmentId", "pacienteId=${request.pacienteId} odontologoId=${request.odontologoId} fechaHora=${request.fechaHora}")
+        auditLog(ctx, "CITA_CREADA", "cita:$appointmentId", "pacienteId=${request.pacienteId} odontologoId=${request.odontologoId} fechaHora=${request.fechaHora} duracion=${request.duracionMinutos}")
         ctx.status(HttpStatus.CREATED).json(
             mapOf(
                 "id" to appointmentId,
@@ -3542,8 +3630,9 @@ fun acceptAppointmentRequest(ctx: Context) {
     }
 
     try {
-        val appointmentId = AppointmentRequestRepository.accept(requestId, request.odontologoId)
-        auditLog(ctx, "SOLICITUD_CITA_ACEPTADA", "solicitud_cita:$requestId", "citaId=$appointmentId odontologoId=${request.odontologoId}")
+        normalizeAppointmentDuration(request.duracionMinutos)
+        val appointmentId = AppointmentRequestRepository.accept(requestId, request.odontologoId, request.duracionMinutos)
+        auditLog(ctx, "SOLICITUD_CITA_ACEPTADA", "solicitud_cita:$requestId", "citaId=$appointmentId odontologoId=${request.odontologoId} duracion=${request.duracionMinutos}")
         ctx.json(
             mapOf(
                 "id" to requestId,
@@ -3559,6 +3648,8 @@ fun acceptAppointmentRequest(ctx: Context) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro el odontologo solicitado."))
     } catch (_: AppointmentRequestNotFoundException) {
         ctx.status(HttpStatus.NOT_FOUND).json(ApiError("No se encontro una solicitud pendiente con ese id."))
+    } catch (error: IllegalArgumentException) {
+        badRequest(ctx, error.message ?: "Datos de solicitud invalidos.")
     }
 }
 

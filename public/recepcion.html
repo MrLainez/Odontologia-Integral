@@ -1,26 +1,26 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Panel administrativo para recepcion de Odontologia Integral.">
-  <title>Recepcion | Odontologia Integral</title>
+  <meta name="description" content="Panel administrativo para recepcion de Odontología Integral.">
+  <title>Recepción | Odontología Integral</title>
   <link rel="stylesheet" href="styles.css?v=20260627-7">
 </head>
 <body>
   <main class="reception-shell">
     <!-- Sidebar de navegacion del modulo administrativo. -->
-    <aside class="reception-sidebar" aria-label="Navegacion de recepcion">
+    <aside class="reception-sidebar" aria-label="Navegación de recepcion">
       <a class="brand-block brand-block--compact" href="recepcion.html" aria-label="Panel de recepcion">
         <span class="brand-mark" aria-hidden="true">OI</span>
         <div>
-          <strong>Odontologia Integral</strong>
-          <span>Recepcion</span>
+          <strong>Odontología Integral</strong>
+          <span>Recepción</span>
         </div>
       </a>
 
       <nav class="reception-nav">
-        <a class="is-active" href="#agenda">Agenda del dia</a>
+        <a class="is-active" href="#agenda">Agenda del día</a>
         <a href="#pacientes">Pacientes</a>
         <a href="#usuarios">Usuarios</a>
         <a href="#personal" data-admin-only>Personal</a>
@@ -38,7 +38,7 @@
       <header class="reception-header">
         <div>
           <p class="eyebrow">Panel administrativo</p>
-          <h1 id="reception-title">Dashboard de Recepcion</h1>
+          <h1 id="reception-title">Dashboard de Recepción</h1>
           <p>Agenda consolidada de citas para hoy.</p>
         </div>
         <button class="button button--primary reception-new-button" id="open-manual-appointment" type="button">
@@ -47,7 +47,7 @@
       </header>
 
       <section class="reception-section is-active" id="agenda" data-section="agenda">
-        <div class="reception-stats" aria-label="Resumen del dia">
+        <div class="reception-stats" aria-label="Resumen del día">
           <article class="stat-card">
             <span>Total citas</span>
             <strong id="stat-total">0</strong>
@@ -74,14 +74,14 @@
           <p class="form-status" id="appointment-requests-status" role="status" aria-live="polite"></p>
         </section>
 
-        <!-- RF5/RF7: agenda del dia con cambio visual de estatus. -->
+        <!-- RF5/RF7: agenda del día con cambio visual de estatus. -->
         <section class="reception-panel" aria-label="Agenda consolidada">
           <div class="panel__header">
             <h2>Citas de hoy</h2>
             <input class="panel-search" id="agenda-date" type="date" aria-label="Fecha de agenda">
           </div>
 
-          <div class="appointments-table" role="table" aria-label="Citas del dia">
+          <div class="appointments-table" role="table" aria-label="Citas del día">
             <div class="appointments-table__head" role="row">
               <span role="columnheader">Hora</span>
               <span role="columnheader">Paciente</span>
@@ -98,7 +98,7 @@
           <div class="panel__header">
             <div>
               <h2>Pacientes</h2>
-              <span class="muted-label">Consulta rapida</span>
+              <span class="muted-label">Consulta rápida</span>
             </div>
             <input class="panel-search" id="patient-filter" type="search" placeholder="Buscar por nombre o correo">
           </div>
@@ -107,7 +107,7 @@
         </section>
       </section>
 
-      <!-- Gestion interna para crear accesos de pacientes desde recepcion. -->
+      <!-- Gestión interna para crear accesos de pacientes desde recepcion. -->
       <section class="reception-section" id="usuarios" data-section="usuarios">
         <section class="reception-panel" aria-labelledby="users-title">
           <div class="panel__header">
@@ -116,7 +116,7 @@
               <span class="muted-label">Acceso creado por recepcion</span>
             </div>
             <button class="button button--secondary" id="open-user-modal" type="button">
-              Crear Usuario
+              Crear usuario
             </button>
           </div>
 
@@ -129,7 +129,7 @@
           <div class="panel__header">
             <div>
               <h2>Registro de pagos</h2>
-              <span class="muted-label">Bitacora interna</span>
+              <span class="muted-label">Bitácora interna</span>
             </div>
           </div>
 
@@ -138,7 +138,7 @@
             <input id="payment-concept" name="concept" type="text" placeholder="Concepto" required>
             <input id="payment-amount" name="amount" type="number" min="1" step="0.01" placeholder="Monto" required>
             <select id="payment-method" name="method" required>
-              <option value="">Metodo</option>
+              <option value="">Método</option>
               <option>Efectivo</option>
               <option>Tarjeta</option>
               <option>Transferencia</option>
@@ -146,6 +146,11 @@
             <button class="button button--primary" type="submit">Registrar pago</button>
           </form>
           <p class="form-status" id="payment-status" role="status" aria-live="polite"></p>
+
+          <div class="panel-filter">
+            <label for="payment-filter">Filtrar pagos por paciente</label>
+            <input id="payment-filter" class="panel-search" type="search" placeholder="Nombre del paciente">
+          </div>
 
           <div class="records-list" id="payments-list"></div>
         </section>
@@ -156,7 +161,7 @@
           <div class="panel__header">
             <div>
               <h2>Personal del sistema</h2>
-              <span class="muted-label">Administradores, recepcionistas y odontologos</span>
+              <span class="muted-label">Administradores, recepcionistas y odontólogos</span>
             </div>
           </div>
 
@@ -167,8 +172,8 @@
             <select id="admin-user-role" name="rol" required>
               <option value="">Rol</option>
               <option value="ADMIN">Administrador</option>
-              <option value="RECEPCION">Recepcionista</option>
-              <option value="ODONTOLOGO">Odontologo</option>
+              <option value="RECEPCION">Recepciónista</option>
+              <option value="ODONTOLOGO">Odontólogo</option>
             </select>
             <button class="button button--primary" type="submit">Crear personal</button>
           </form>
@@ -182,7 +187,7 @@
         <section class="reception-panel">
           <div class="panel__header">
             <div>
-              <h2>Horarios de atencion</h2>
+              <h2>Horarios de atención</h2>
               <span class="muted-label">Intervalos de 30 minutos</span>
             </div>
           </div>
@@ -217,8 +222,8 @@
           <div class="holiday-block">
             <div class="panel__header">
               <div>
-                <h3>Dias feriados o cierres</h3>
-                <span class="muted-label">Fechas sin atencion</span>
+                <h3>Días feriados o cierres</h3>
+                <span class="muted-label">Fechas sin atención</span>
               </div>
             </div>
 
@@ -287,8 +292,8 @@
         </div>
 
         <div class="form-row">
-          <label for="manual-phone">Telefono</label>
-          <input id="manual-phone" name="phone" type="tel" placeholder="10 digitos" required>
+          <label for="manual-phone">Teléfono</label>
+          <input id="manual-phone" name="phone" type="tel" placeholder="10 dígitos" required>
           <small class="field-error" data-error-for="manual-phone"></small>
         </div>
 
@@ -305,6 +310,19 @@
           </select>
           <small class="field-error" data-error-for="manual-dentist"></small>
           <p class="availability-status" id="manual-availability-status">Selecciona fecha y odontologo.</p>
+        </div>
+
+        <div class="form-row">
+          <label for="manual-duration">Duración</label>
+          <select id="manual-duration" name="duration" required>
+            <option value="30">30 minutos</option>
+            <option value="60" selected>1 hora</option>
+            <option value="90">1 hora 30 minutos</option>
+            <option value="120">2 horas</option>
+            <option value="180">3 horas</option>
+            <option value="240">4 horas</option>
+          </select>
+          <small class="field-error" data-error-for="manual-duration"></small>
         </div>
 
         <div class="form-row">
@@ -325,8 +343,8 @@
     <section class="manual-modal">
       <div class="panel__header">
         <div>
-          <p class="eyebrow">Recepcion</p>
-          <h2 id="user-modal-title">Crear Usuario de Paciente</h2>
+          <p class="eyebrow">Recepción</p>
+          <h2 id="user-modal-title">Crear usuario de Paciente</h2>
         </div>
         <button class="text-button" type="button" data-close-user-modal>Cerrar</button>
       </div>
@@ -339,20 +357,20 @@
         </div>
 
         <div class="form-row">
-          <label for="user-phone">Telefono</label>
-          <input id="user-phone" name="telefono" type="tel" placeholder="10 digitos" required>
+          <label for="user-phone">Teléfono</label>
+          <input id="user-phone" name="telefono" type="tel" placeholder="10 dígitos" required>
           <small class="field-error" data-error-for="user-phone"></small>
         </div>
 
         <div class="form-row">
-          <label for="user-email">Correo electronico</label>
+          <label for="user-email">Correo electrónico</label>
           <input id="user-email" name="email" type="email" placeholder="paciente@correo.com" required>
           <small class="field-error" data-error-for="user-email"></small>
         </div>
 
         <div class="form-row">
           <label for="user-password">Contraseña temporal</label>
-          <input id="user-password" name="password" type="password" placeholder="Minimo 8 caracteres, letras y numeros" required>
+          <input id="user-password" name="password" type="password" placeholder="Mínimo 8 caracteres, letras y números" required>
           <small class="field-error" data-error-for="user-password"></small>
         </div>
 

@@ -1,20 +1,20 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Portal de acceso de Odontologia Integral.">
-  <title>Acceso | Odontologia Integral</title>
+  <meta name="description" content="Portal de acceso de Odontología Integral.">
+  <title>Acceso | Odontología Integral</title>
   <link rel="stylesheet" href="styles.css?v=20260627-4">
 </head>
 <body>
   <main class="app-shell">
-    <!-- Pantalla inicial para pacientes, recepcion, odontologos y administracion. -->
+    <!-- Pantalla inicial para pacientes, recepcion, odontólogos y administracion. -->
     <section class="login-view" id="login-view" aria-labelledby="login-title">
       <div class="brand-block">
         <span class="brand-mark" aria-hidden="true">OI</span>
         <div>
-          <strong>Odontologia Integral</strong>
+          <strong>Odontología Integral</strong>
           <span>Portal de Acceso</span>
         </div>
       </div>
@@ -22,21 +22,21 @@
       <form class="auth-card" id="login-form" novalidate>
         <div class="auth-card__header">
           <p class="eyebrow">Acceso privado</p>
-          <h1 id="login-title">Iniciar sesion</h1>
+          <h1 id="login-title">Iniciar sesión</h1>
           <p>Ingresa con tus credenciales de paciente o personal autorizado.</p>
         </div>
 
         <div class="form-row">
-          <label for="email">Correo electronico</label>
+          <label for="email">Correo electrónico</label>
           <input id="email" name="email" type="email" autocomplete="email" placeholder="correo@ejemplo.com" required>
           <small class="field-error" data-error-for="email"></small>
         </div>
 
         <div class="form-row">
-          <label for="password">Contrasena</label>
+          <label for="password">Contraseña</label>
           <div class="password-field">
-            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Tu contrasena" required>
-            <button type="button" id="toggle-password" aria-label="Mostrar contrasena">Ver</button>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+            <button type="button" id="toggle-password" aria-label="Mostrar contraseña">Ver</button>
           </div>
           <small class="field-error" data-error-for="password"></small>
         </div>
@@ -53,7 +53,7 @@
       </form>
 
       <p class="support-note">
-        Si aun no tienes cuenta, solicita tu activacion directamente en recepcion.
+        Si aún no tienes cuenta, solicita tu activación directamente en recepción.
       </p>
     </section>
 
@@ -63,7 +63,7 @@
         <div class="brand-block brand-block--compact">
           <span class="brand-mark" aria-hidden="true">OI</span>
           <div>
-            <strong>Odontologia Integral</strong>
+            <strong>Odontología Integral</strong>
             <span>Portal de Pacientes</span>
           </div>
         </div>
@@ -77,7 +77,7 @@
         <div>
           <p class="eyebrow">Bienvenida</p>
           <h1 id="portal-title">Hola</h1>
-          <p>Este es el resumen de tus proximas citas y expediente dental.</p>
+          <p>Este es el resumen de tus próximas citas y expediente dental.</p>
         </div>
         <a class="button button--primary" href="agendar.html">Nueva cita</a>
       </div>
@@ -86,7 +86,7 @@
       <div class="dashboard-grid">
         <article class="panel next-appointment">
           <div class="panel__header">
-            <h2>Proxima cita</h2>
+            <h2>Próxima cita</h2>
             <span class="status-pill" id="next-appointment-status">Sin cita</span>
           </div>
           <div class="appointment-date">
@@ -99,7 +99,7 @@
           <dl class="detail-list">
             <div>
               <dt>Motivo</dt>
-              <dd id="next-appointment-treatment">Agenda una nueva cita para verla aqui.</dd>
+              <dd id="next-appointment-treatment">Agenda una nueva cita para verla aquí.</dd>
             </div>
             <div>
               <dt>Doctor</dt>
@@ -115,7 +115,7 @@
           </div>
           <div class="record-summary">
             <div>
-              <span>Grupo sanguineo</span>
+              <span>Grupo sanguíneo</span>
               <strong id="record-blood-type">No registrado</strong>
             </div>
             <div>
@@ -123,20 +123,20 @@
               <strong id="record-allergies">No registradas</strong>
             </div>
             <div>
-              <span>Ultima visita</span>
-              <strong id="record-last-visit">Sin notas clinicas</strong>
+              <span>Última visita</span>
+              <strong id="record-last-visit">Sin notas clínicas</strong>
             </div>
           </div>
         </article>
 
-        <!-- RF4: lista de proximas citas con acciones de reprogramar o cancelar. -->
+        <!-- RF4: lista de próximas citas con acciones de reprogramar o cancelar. -->
         <article class="panel panel--wide">
           <div class="panel__header">
             <h2>Mis citas</h2>
-            <span class="muted-label">Proximas</span>
+            <span class="muted-label">Próximas</span>
           </div>
           <div class="appointment-cards" id="appointment-list"></div>
-          <p class="empty-state" id="appointments-empty">No tienes citas proximas registradas.</p>
+          <p class="empty-state" id="appointments-empty">No tienes citas próximas registradas.</p>
         </article>
 
       </div>
@@ -150,12 +150,12 @@
       <div class="confirm-dialog__icon" aria-hidden="true">!</div>
       <h2 id="cancel-dialog-title">Cancelar cita</h2>
       <p>
-        Recuerda que las cancelaciones o reprogramaciones deben realizarse con al menos 24 horas de anticipacion.
-        Si confirmas, esta cita dejara de aparecer en tu lista.
+        Recuerda que las cancelaciones o reprogramaciones deben realizarse con al menos 24 horas de anticipación.
+        Si confirmas, esta cita dejará de aparecer en tu lista.
       </p>
       <div class="confirm-dialog__actions">
         <button class="button button--secondary" type="button" data-close-dialog>Conservar cita</button>
-        <button class="button button--danger" id="confirm-cancel-button" type="button">Si, cancelar</button>
+        <button class="button button--danger" id="confirm-cancel-button" type="button">Sí, cancelar</button>
       </div>
     </section>
   </div>

@@ -1,4 +1,4 @@
-const odontogramGrid = document.querySelector("#odontogram-grid");
+﻿const odontogramGrid = document.querySelector("#odontogram-grid");
 const toothMenu = document.querySelector("#tooth-menu");
 const toothMenuTitle = document.querySelector("#tooth-menu-title");
 const noteInput = document.querySelector("#evolution-note");
@@ -44,7 +44,7 @@ if (!adminSession || !authToken || !allowedDentistRoles.includes(adminSession.ro
   throw new Error("Acceso restringido al modulo odontologico.");
 }
 
-// Estado activo de la pantalla: paciente cargado y superficie dental seleccionada.
+// Estado activo de la pantalla: paciente cargado y superficie dental selecciónada.
 let activePatientId = Number(localStorage.getItem("odontologoPacienteId") || "0");
 let selectedSurface = null;
 let odontogramRecords = new Map();
@@ -58,7 +58,7 @@ const teethByQuadrant = {
   4: [41, 42, 43, 44, 45, 46, 47, 48]
 };
 
-// Cada pieza dental se divide en 5 superficies clinicas.
+// Cada pieza dental se divide en 5 superficies clínicas.
 const toothSurfaces = [
   { id: "vestibular", apiValue: "VESTIBULAR", label: "Vestibular", className: "surface--top" },
   { id: "distal", apiValue: "DISTAL", label: "Distal", className: "surface--right" },
@@ -71,8 +71,8 @@ const toothSurfaces = [
 const toothStatuses = {
   healthy: { label: "Sano", apiValue: "SANO", className: "tooth--healthy" },
   caries: { label: "Caries", apiValue: "CARIES", className: "tooth--caries" },
-  filling: { label: "Obturacion", apiValue: "OBTURACION", className: "tooth--filling" },
-  extraction: { label: "Extraccion", apiValue: "EXTRACCION", className: "tooth--extraction" }
+  filling: { label: "Obturación", apiValue: "OBTURACION", className: "tooth--filling" },
+  extraction: { label: "Extracción", apiValue: "EXTRACCION", className: "tooth--extraction" }
 };
 
 // Clave interna para ubicar rapidamente una superficie dentro del odontograma.
@@ -167,7 +167,7 @@ async function fetchProtectedBlob(url) {
   });
 
   if (!response.ok) {
-    throw new Error("No fue posible cargar el archivo clinico.");
+    throw new Error("No fue posible cargar el archivo clínico.");
   }
 
   return response.blob();
@@ -294,7 +294,7 @@ function paintOdontogram(odontogram) {
   });
 
   odontogram.forEach((record) => {
-    const toothNumber = record.numeroPieza || record.numero_pieza;
+    const toothNumber = record.númeroPieza || record.número_pieza;
     const surface = normalizeSurface(record.superficie);
     const status = normalizeStatus(record.estado);
     const surfaceButton = document.querySelector(`.tooth-surface[data-tooth="${toothNumber}"][data-surface="${surface}"]`);
@@ -372,7 +372,7 @@ function renderClinicalImages(images) {
   if (!images.length) {
     const emptyItem = document.createElement("article");
     emptyItem.className = "clinical-image-item";
-    emptyItem.innerHTML = "<p>Sin radiografias o imagenes registradas.</p>";
+    emptyItem.innerHTML = "<p>Sin radiografías o imágenes registradas.</p>";
     clinicalImageList.append(emptyItem);
     return;
   }
@@ -415,7 +415,7 @@ async function loadProtectedClinicalImagePreview(item, image, isImage) {
     link.href = objectUrl;
 
     if (isImage) {
-      link.innerHTML = `<img src="${objectUrl}" alt="${escapeHtml(image.descripcion || image.nombreOriginal || "Imagen clinica")}">`;
+      link.innerHTML = `<img src="${objectUrl}" alt="${escapeHtml(image.descripcion || image.nombreOriginal || "Imagen clínica")}">`;
     } else {
       link.innerHTML = "<span>PDF</span>";
     }
@@ -426,11 +426,11 @@ async function loadProtectedClinicalImagePreview(item, image, isImage) {
   }
 }
 
-// Llena la cabecera clinica del paciente activo.
+// Llena la cabecera clínica del paciente activo.
 function fillPatientHeader(expediente) {
   const paciente = expediente.paciente || {};
   const clinicalFile = expediente.expediente || {};
-  const notes = expediente.notasEvolucion || [];
+  const notes = expediente.notasEvolución || [];
 
   patientName.textContent = paciente.nombre || "Paciente sin nombre";
   patientAge.textContent = clinicalFile.edad ? `${clinicalFile.edad} años` : "No registrado";
@@ -442,7 +442,7 @@ function fillPatientHeader(expediente) {
   clinicalBackgroundInput.value = clinicalFile.antecedentes || "";
 }
 
-// Busca el expediente completo del paciente y refresca toda la vista clinica.
+// Busca el expediente completo del paciente y refresca toda la vista clínica.
 async function loadPatientRecord(patientId) {
   noteStatus.classList.remove("is-error");
   noteStatus.textContent = "Cargando expediente...";
@@ -454,8 +454,8 @@ async function loadPatientRecord(patientId) {
     localStorage.setItem("odontologoPacienteId", String(patientId));
     fillPatientHeader(expediente);
     paintOdontogram(expediente.odontograma || []);
-    renderNotes(expediente.notasEvolucion || []);
-    renderClinicalImages(expediente.imagenesClinicas || []);
+    renderNotes(expediente.notasEvolución || []);
+    renderClinicalImages(expediente.imágenesClinicas || []);
     await loadPatientHistory(patientId);
     noteStatus.textContent = "Expediente cargado correctamente.";
     imageStatus.textContent = "";
@@ -469,7 +469,7 @@ async function uploadClinicalImage(event) {
   event.preventDefault();
 
   if (!activePatientId) {
-    imageStatus.textContent = "Selecciona un paciente antes de subir imagenes.";
+    imageStatus.textContent = "Selecciona un paciente antes de subir imágenes.";
     imageStatus.classList.add("is-error");
     return;
   }
@@ -485,10 +485,10 @@ async function uploadClinicalImage(event) {
 
   try {
     const formData = new FormData(clinicalImageForm);
-    const response = await fetchFormData(`${API_BASE_URL}/api/pacientes/${activePatientId}/imagenes`, formData);
+    const response = await fetchFormData(`${API_BASE_URL}/api/pacientes/${activePatientId}/imágenes`, formData);
     const emptyItem = clinicalImageList.querySelector(".clinical-image-item p");
 
-    if (emptyItem?.textContent.includes("Sin radiografias") || emptyItem?.textContent.includes("Selecciona")) {
+    if (emptyItem?.textContent.includes("Sin radiografías") || emptyItem?.textContent.includes("Selecciona")) {
       clinicalImageList.innerHTML = "";
     }
 
@@ -608,7 +608,7 @@ async function saveClinicalFile(event) {
   }
 }
 
-// Abre el menu contextual junto a la superficie seleccionada.
+// Abre el menu contextual junto a la superficie selecciónada.
 function openToothMenu(surface) {
   const rect = surface.getBoundingClientRect();
   selectedSurface = surface;
@@ -711,7 +711,7 @@ function addNoteItem(text, timestamp, prepend = true) {
   }
 }
 
-// Guarda una nota clinica en la API y la agrega a la lista sin recargar.
+// Guarda una nota clínica en la API y la agrega a la lista sin recargar.
 async function addEvolutionNote() {
   const text = noteInput.value.trim();
 
@@ -833,7 +833,7 @@ passwordForm.addEventListener("submit", async (event) => {
   };
 
   if (!payload.passwordActual || payload.passwordNueva.length < 8 || !/[A-Za-z]/.test(payload.passwordNueva) || !/\d/.test(payload.passwordNueva)) {
-    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un número.";
     passwordStatus.classList.add("is-error");
     return;
   }
@@ -862,7 +862,7 @@ renderOdontogram();
 if (activePatientId) {
   loadPatientRecord(activePatientId);
 } else {
-  noteStatus.textContent = "Busca y selecciona un paciente para comenzar.";
+  noteStatus.textContent = "Busca y seleccióna un paciente para comenzar.";
   renderAppointmentHistory([]);
   renderNotes([]);
   renderClinicalImages([]);

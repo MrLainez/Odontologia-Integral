@@ -1,21 +1,21 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Modulo odontologico de expediente clinico.">
-  <title>Expediente Clinico | Odontologia Integral</title>
+  <meta name="description" content="Módulo odontológico de expediente clínico.">
+  <title>Expediente Clínico | Odontología Integral</title>
   <link rel="stylesheet" href="styles.css?v=20260630-2">
 </head>
 <body>
   <main class="dentist-shell">
-    <!-- Barra superior para busqueda rapida de pacientes. -->
+    <!-- Barra superior para búsqueda rápida de pacientes. -->
     <header class="dentist-topbar">
-      <a class="brand-block brand-block--compact" href="odontologo.html" aria-label="Modulo odontologico">
+      <a class="brand-block brand-block--compact" href="odontologo.html" aria-label="Módulo odontologico">
         <span class="brand-mark" aria-hidden="true">OI</span>
         <div>
-          <strong>Odontologia Integral</strong>
-          <span>Expediente Clinico</span>
+          <strong>Odontología Integral</strong>
+          <span>Expediente Clínico</span>
         </div>
       </a>
 
@@ -31,10 +31,10 @@
       </div>
     </header>
 
-    <section class="patient-summary" aria-label="Datos clinicos basicos">
+    <section class="patient-summary" aria-label="Datos clínicos básicos">
       <div>
         <p class="eyebrow">Paciente activo</p>
-        <h1 id="patient-name">Ningun paciente seleccionado</h1>
+        <h1 id="patient-name">Ningún paciente seleccionado</h1>
       </div>
       <dl class="clinical-data">
         <div>
@@ -46,7 +46,7 @@
           <dd id="patient-allergies">No registrado</dd>
         </div>
         <div>
-          <dt>Ultima consulta</dt>
+          <dt>Última consulta</dt>
           <dd id="patient-last-visit">Sin consultas</dd>
         </div>
       </dl>
@@ -63,20 +63,20 @@
           <div class="tooth-legend" aria-label="Leyenda de estados">
             <span><i class="tooth-state-dot tooth-state-healthy"></i>Sano</span>
             <span><i class="tooth-state-dot tooth-state-caries"></i>Caries</span>
-            <span><i class="tooth-state-dot tooth-state-filling"></i>Obturacion</span>
-            <span><i class="tooth-state-dot tooth-state-extraction"></i>Extraccion</span>
+            <span><i class="tooth-state-dot tooth-state-filling"></i>Obturación</span>
+            <span><i class="tooth-state-dot tooth-state-extraction"></i>Extracción</span>
           </div>
         </div>
 
         <div class="odontogram-grid" id="odontogram-grid" aria-label="Piezas dentales adultas"></div>
       </article>
 
-      <!-- Imagenologia: radiografias, fotografias intraorales y documentos visuales. -->
+      <!-- Imagenología: radiografías, fotografias intraorales y documentos visuales. -->
       <article class="clinical-panel media-panel" aria-labelledby="media-title">
         <div class="panel__header">
           <div>
-            <p class="eyebrow">Imagenologia</p>
-            <h2 id="media-title">Radiografias e imagenes</h2>
+            <p class="eyebrow">Imagenología</p>
+            <h2 id="media-title">Radiografías e imágenes</h2>
           </div>
           <span class="muted-label">JPG, PNG, WebP, PDF</span>
         </div>
@@ -86,8 +86,8 @@
             <div class="form-row">
               <label for="clinical-image-type">Tipo</label>
               <select id="clinical-image-type" name="tipo">
-                <option value="RADIOGRAFIA">Radiografia</option>
-                <option value="FOTOGRAFIA">Fotografia clinica</option>
+                <option value="RADIOGRAFIA">Radiografía</option>
+                <option value="FOTOGRAFIA">Fotografía clínica</option>
                 <option value="DOCUMENTO">Documento visual</option>
               </select>
             </div>
@@ -99,17 +99,17 @@
           </div>
 
           <div class="form-row">
-            <label for="clinical-image-description">Descripcion</label>
-            <input id="clinical-image-description" name="descripcion" type="text" placeholder="Ej. Panoramica inicial, lateral derecha">
+            <label for="clinical-image-description">Descripción</label>
+            <input id="clinical-image-description" name="descripcion" type="text" placeholder="Ej. Panorámica inicial, lateral derecha">
           </div>
 
-          <button class="button button--secondary" type="submit">Subir Imagen</button>
+          <button class="button button--secondary" type="submit">Subir imagen</button>
           <p class="form-status" id="image-status" role="status" aria-live="polite"></p>
         </form>
 
-        <div class="clinical-image-list" id="clinical-image-list" aria-label="Imagenes clinicas registradas">
+        <div class="clinical-image-list" id="clinical-image-list" aria-label="Imágenes clínicas registradas">
           <article class="clinical-image-item">
-            <p>Selecciona un paciente para ver sus imagenes.</p>
+            <p>Selecciona un paciente para ver sus imágenes.</p>
           </article>
         </div>
       </article>
@@ -121,7 +121,7 @@
             <p class="eyebrow">RF10</p>
             <h2 id="history-title">Historial</h2>
           </div>
-          <span class="muted-label">Evolucion</span>
+          <span class="muted-label">Evolución</span>
         </div>
 
         <form class="clinical-file-form" id="clinical-file-form" novalidate>
@@ -152,18 +152,18 @@
 
           <div class="form-row">
             <label for="clinical-background">Antecedentes</label>
-            <textarea id="clinical-background" name="antecedentes" rows="3" placeholder="Antecedentes clinicos relevantes"></textarea>
+            <textarea id="clinical-background" name="antecedentes" rows="3" placeholder="Antecedentes clínicos relevantes"></textarea>
           </div>
 
-          <button class="button button--secondary" type="submit">Guardar Expediente</button>
+          <button class="button button--secondary" type="submit">Guardar expediente</button>
         </form>
 
         <div class="form-row">
-          <label for="evolution-note">Nota de evolucion</label>
+          <label for="evolution-note">Nota de evolución</label>
           <textarea id="evolution-note" rows="5" placeholder="Describe hallazgos, procedimiento o indicaciones"></textarea>
         </div>
 
-        <button class="button button--primary" id="add-note" type="button">Agregar Nota</button>
+        <button class="button button--primary" id="add-note" type="button">Agregar nota</button>
         <p class="form-status" id="note-status" role="status" aria-live="polite"></p>
 
         <div class="history-subsection">
@@ -172,7 +172,7 @@
         </div>
 
         <div class="history-subsection">
-          <h3>Notas de evolucion</h3>
+          <h3>Notas de evolución</h3>
         </div>
         <div class="note-list" id="note-list" aria-label="Notas registradas"></div>
       </aside>
@@ -183,8 +183,8 @@
     <strong id="tooth-menu-title">Pieza dental</strong>
     <button type="button" data-tooth-status="healthy">Sano</button>
     <button type="button" data-tooth-status="caries">Caries</button>
-    <button type="button" data-tooth-status="filling">Obturacion</button>
-    <button type="button" data-tooth-status="extraction">Extraccion</button>
+    <button type="button" data-tooth-status="filling">Obturación</button>
+    <button type="button" data-tooth-status="extraction">Extracción</button>
   </div>
 
   <div class="confirm-dialog is-hidden" id="password-dialog" role="dialog" aria-modal="true" aria-labelledby="password-dialog-title">

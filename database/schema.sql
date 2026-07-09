@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS citas (
   odontologo_id INT NOT NULL,
   fecha DATE NOT NULL,
   hora TIME NOT NULL,
+  duracion_minutos INT NOT NULL DEFAULT 60,
   tratamiento VARCHAR(160) NOT NULL,
   estatus VARCHAR(30) NOT NULL DEFAULT 'CONFIRMADA',
   fecha_creacion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +64,9 @@ CREATE TABLE IF NOT EXISTS citas (
     FOREIGN KEY (odontologo_id) REFERENCES odontologos(id),
   INDEX idx_citas_fecha_hora (fecha, hora)
 );
+
+ALTER TABLE citas
+  ADD COLUMN IF NOT EXISTS duracion_minutos INT NOT NULL DEFAULT 60 AFTER hora;
 
 CREATE TABLE IF NOT EXISTS solicitudes_cita (
   id INT AUTO_INCREMENT PRIMARY KEY,

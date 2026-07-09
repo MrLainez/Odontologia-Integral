@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Agenda una nueva cita en el portal de pacientes de Odontologia Integral.">
-  <title>Agendar Nueva Cita | Odontologia Integral</title>
+  <meta name="description" content="Agenda una nueva cita en el portal de pacientes de Odontología Integral.">
+  <title>Agendar Nueva Cita | Odontología Integral</title>
   <link rel="stylesheet" href="styles.css?v=20260627-8">
 </head>
 <body>
@@ -14,7 +14,7 @@
       <a class="brand-block brand-block--compact" href="index.html" aria-label="Volver al portal de pacientes">
         <span class="brand-mark" aria-hidden="true">OI</span>
         <div>
-          <strong>Odontologia Integral</strong>
+          <strong>Odontología Integral</strong>
           <span>Portal de Pacientes</span>
         </div>
       </a>
@@ -26,7 +26,7 @@
       <div class="schedule-heading">
         <p class="eyebrow">Disponibilidad</p>
         <h1 id="schedule-title">Solicitar Nueva Cita</h1>
-        <p>Selecciona un dia y horario preferido. Recepcion revisara tu solicitud y confirmara la cita.</p>
+        <p>Selecciona un día y horario preferido. Recepción revisará tu solicitud y confirmará la cita.</p>
       </div>
 
       <!-- El calendario y los horarios se generan desde agendar.js. -->
@@ -60,15 +60,15 @@
         <div class="time-slots" id="time-slots" aria-live="polite"></div>
       </section>
 
-      <!-- Resumen de la fecha y hora seleccionadas. -->
-      <aside class="panel schedule-summary" aria-label="Resumen de seleccion">
+      <!-- Resumen de la fecha y hora selecciónadas. -->
+      <aside class="panel schedule-summary" aria-label="Resumen de selección">
         <div class="panel__header">
           <h2>Resumen</h2>
           <span class="status-pill status-pill--soft" id="summary-status">Pendiente</span>
         </div>
         <dl class="detail-list">
           <div>
-            <dt>Dia</dt>
+            <dt>Día</dt>
             <dd id="summary-date">Sin seleccionar</dd>
           </div>
           <div>
@@ -88,7 +88,7 @@
         </div>
         <div class="form-row">
           <label for="appointment-reason">Motivo breve</label>
-          <textarea id="appointment-reason" rows="3" placeholder="Ej. Revision, dolor, control o limpieza"></textarea>
+          <textarea id="appointment-reason" rows="3" placeholder="Ej. Revisión, dolor, control o limpieza"></textarea>
         </div>
         <p class="form-status" id="schedule-status" role="status" aria-live="polite"></p>
       </aside>
@@ -97,7 +97,7 @@
 
   <!-- RF3: boton flotante que se habilita al seleccionar un horario disponible. -->
   <button class="floating-confirm" id="confirm-slot" type="button" disabled>
-    Enviar Solicitud
+    Enviar solicitud
   </button>
 
   <!-- Toast de confirmacion de cita. -->

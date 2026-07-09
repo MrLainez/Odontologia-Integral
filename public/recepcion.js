@@ -1,4 +1,4 @@
-const agendaTable = document.querySelector(".appointments-table");
+﻿const agendaTable = document.querySelector(".appointments-table");
 const manualModal = document.querySelector("#manual-appointment-modal");
 const openManualButton = document.querySelector("#open-manual-appointment");
 const manualForm = document.querySelector("#manual-appointment-form");
@@ -23,6 +23,7 @@ const patientFilter = document.querySelector("#patient-filter");
 const patientsList = document.querySelector("#patients-list");
 const paymentForm = document.querySelector("#payment-form");
 const paymentStatus = document.querySelector("#payment-status");
+const paymentFilter = document.querySelector("#payment-filter");
 const paymentsList = document.querySelector("#payments-list");
 const adminUserForm = document.querySelector("#admin-user-form");
 const adminUserStatus = document.querySelector("#admin-user-status");
@@ -47,6 +48,7 @@ const holidayStatus = document.querySelector("#holiday-status");
 const appointmentRequestsList = document.querySelector("#appointment-requests-list");
 const appointmentRequestsStatus = document.querySelector("#appointment-requests-status");
 const manualDentistSelect = document.querySelector("#manual-dentist");
+const manualDurationSelect = document.querySelector("#manual-duration");
 const manualAvailabilityStatus = document.querySelector("#manual-availability-status");
 
 // Endpoints usados por el panel de recepcion.
@@ -221,9 +223,12 @@ function formatAppointmentTime(appointment) {
 
 // Deja una cita en una estructura uniforme para renderizarla.
 function normalizeAppointment(appointment) {
+  const duration = Number(appointment.duracionMinutos || appointment.duracion_minutos || appointment.duration || 60);
+
   return {
     id: appointment.id,
     time: formatAppointmentTime(appointment),
+    duration,
     patient: appointment.pacienteNombre
       || appointment.nombrePaciente
       || appointment.paciente?.nombre
@@ -257,7 +262,7 @@ function createAppointmentRow(appointment) {
     <span role="cell">${escapeHtml(normalized.patient)}</span>
     <span role="cell">
       ${escapeHtml(normalized.treatment)}
-      <small class="cell-meta">${escapeHtml(normalized.dentist)}</small>
+      <small class="cell-meta">${escapeHtml(normalized.dentist)} · ${formatDuration(normalized.duration)}</small>
     </span>
     <span role="cell"><span class="reception-badge" data-status-badge>${config.label}</span></span>
     <div class="status-actions" role="cell">
@@ -266,6 +271,12 @@ function createAppointmentRow(appointment) {
   `;
 
   return row;
+}
+
+function formatDuration(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes % 60 === 0) return `${minutes / 60} h`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
 // Actualiza el color y badge de una fila despues de guardar el cambio.
@@ -368,12 +379,13 @@ async function loadDentists() {
   }
 }
 
-async function checkDentistAvailability(date, time, dentistId) {
+async function checkDentistAvailability(date, time, dentistId, durationMinutes = 60) {
   if (!date || !time || !dentistId) return null;
 
   const url = new URL(API_AVAILABILITY_URL);
   url.searchParams.set("fecha", date);
   url.searchParams.set("odontologoId", dentistId);
+  url.searchParams.set("duracionMinutos", durationMinutes);
 
   const availability = await fetchJson(url.toString());
   const slot = (availability.horarios || []).find((item) => String(item.valor).slice(0, 5) === String(time).slice(0, 5));
@@ -398,7 +410,8 @@ async function updateRequestAvailability(row) {
   status.textContent = "Revisando disponibilidad...";
 
   try {
-    const isAvailable = await checkDentistAvailability(row.dataset.requestDate, row.dataset.requestTime, select.value);
+    const duration = row.querySelector("[data-request-duration]")?.value || "60";
+    const isAvailable = await checkDentistAvailability(row.dataset.requestDate, row.dataset.requestTime, select.value, duration);
     status.textContent = isAvailable ? "Horario libre para este odontólogo" : "Horario ocupado para este odontólogo";
     status.classList.toggle("is-success", isAvailable);
     status.classList.toggle("is-error", !isAvailable);
@@ -419,10 +432,11 @@ async function updateManualAvailability() {
   }
 
   const [date, time] = manualDateInput.value.split("T");
+  const duration = manualDurationSelect?.value || "60";
   manualAvailabilityStatus.textContent = "Revisando disponibilidad...";
 
   try {
-    const isAvailable = await checkDentistAvailability(date, time, manualDentistSelect.value);
+    const isAvailable = await checkDentistAvailability(date, time, manualDentistSelect.value, duration);
     manualAvailabilityStatus.textContent = isAvailable ? "Horario libre para este odontólogo." : "Horario ocupado para este odontólogo.";
     manualAvailabilityStatus.classList.toggle("is-success", isAvailable);
     manualAvailabilityStatus.classList.toggle("is-error", !isAvailable);
@@ -432,7 +446,7 @@ async function updateManualAvailability() {
   }
 }
 
-// Carga las citas del dia desde el backend y las pinta en la tabla.
+// Carga las citas del día desde el backend y las pinta en la tabla.
 async function loadTodayAgenda() {
   clearAgendaRows();
   showAgendaMessage("Cargando agenda...");
@@ -456,7 +470,7 @@ async function loadTodayAgenda() {
     updateDashboardStats();
   } catch (error) {
     clearAgendaRows();
-    showAgendaMessage("No se pudo cargar la agenda. Verifica que el servidor este encendido.", true);
+    showAgendaMessage("No se pudo cargar la agenda. Verifica que el servidor esté encendido.", true);
     updateDashboardStats();
   }
 }
@@ -475,7 +489,7 @@ async function loadAppointmentRequests() {
       <article class="record-row">
         <div>
           <strong>No se pudieron cargar solicitudes</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -492,7 +506,7 @@ function renderAppointmentRequests(requests) {
       <article class="record-row">
         <div>
           <strong>Sin solicitudes pendientes</strong>
-          <span>Las nuevas solicitudes de pacientes apareceran aqui.</span>
+          <span>Las nuevas solicitudes de pacientes apareceran aquí.</span>
         </div>
       </article>
     `;
@@ -515,6 +529,17 @@ function renderAppointmentRequests(requests) {
             ${createDentistOptions(request.odontologoId || "", true)}
           </select>
         </label>
+        <label class="inline-select-label">
+          Duración
+          <select data-request-duration>
+            <option value="30">30 minutos</option>
+            <option value="60" selected>1 hora</option>
+            <option value="90">1 hora 30 minutos</option>
+            <option value="120">2 horas</option>
+            <option value="180">3 horas</option>
+            <option value="240">4 horas</option>
+          </select>
+        </label>
         <span class="availability-status" data-request-availability>Selecciona odontólogo</span>
         <span>Odontólogo: ${escapeHtml(request.odontologoNombre || "Sin preferencia")}</span>
       </div>
@@ -531,14 +556,15 @@ function renderAppointmentRequests(requests) {
   });
 }
 
-async function acceptAppointmentRequest(requestId, odontologoId) {
+async function acceptAppointmentRequest(requestId, odontologoId, durationMinutes = 60) {
   return fetchJson(`${API_APPOINTMENT_REQUESTS_URL}/${requestId}/aceptar`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      odontologoId: Number(odontologoId)
+      odontologoId: Number(odontologoId),
+      duracionMinutos: Number(durationMinutes)
     })
   });
 }
@@ -567,7 +593,7 @@ async function loadPatients() {
       <article class="record-row">
         <div>
           <strong>No se pudieron cargar pacientes</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -575,7 +601,7 @@ async function loadPatients() {
       <article class="user-row">
         <div>
           <strong>No se pudieron cargar usuarios</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
         <span class="muted-label">Sin datos</span>
       </article>
@@ -583,12 +609,27 @@ async function loadPatients() {
   }
 }
 
-async function loadPayments() {
+async function loadPayments(filter = "") {
   try {
-    const payments = await fetchJson(API_PAGOS_URL);
+    const query = filter.trim();
+    const url = query
+      ? `${API_PAGOS_URL}?paciente=${encodeURIComponent(query)}`
+      : API_PAGOS_URL;
+    const payments = await fetchJson(url);
 
     clearPayments();
-    payments.forEach(addPaymentRow);
+    if (payments.length === 0) {
+      paymentsList.innerHTML = `
+      <article class="record-row">
+        <div>
+          <strong>No hay pagos registrados</strong>
+          <span>${query ? "No se encontraron pagos para ese paciente." : "Aun no hay pagos en bitacora."}</span>
+        </div>
+      </article>
+    `;
+    } else {
+      payments.forEach(addPaymentRow);
+    }
     updateDashboardStats();
   } catch (error) {
     clearPayments();
@@ -596,7 +637,7 @@ async function loadPayments() {
       <article class="record-row">
         <div>
           <strong>No se pudieron cargar pagos</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -617,7 +658,7 @@ async function loadAdminUsers() {
       <article class="record-row">
         <div>
           <strong>No se pudo cargar el personal</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -650,7 +691,7 @@ async function loadBusinessHours() {
       <article class="record-row">
         <div>
           <strong>No se pudieron cargar los horarios</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -797,7 +838,7 @@ async function loadHolidays() {
       <article class="record-row">
         <div>
           <strong>No se pudieron cargar cierres</strong>
-          <span>Verifica la conexion con el servidor.</span>
+          <span>Verifica la conexión con el servidor.</span>
         </div>
       </article>
     `;
@@ -883,7 +924,7 @@ function createHistoryNoteItem(note) {
   item.innerHTML = `
     <div>
       <strong>${formatHistoryTimestamp(note.fechaHora || note.fecha_hora)}</strong>
-      <span>Nota de evolucion</span>
+      <span>Nota de evolución</span>
     </div>
     <p>${escapeHtml(note.textoNota || note.texto_nota || "")}</p>
   `;
@@ -892,7 +933,7 @@ function createHistoryNoteItem(note) {
 
 function renderPatientHistory(history) {
   const appointments = history.citas || [];
-  const notes = history.notasEvolucion || [];
+  const notes = history.notasEvolución || [];
   const appointmentsList = document.createElement("div");
   const notesList = document.createElement("div");
 
@@ -913,7 +954,7 @@ function renderPatientHistory(history) {
       ${appointments.length ? "" : "<p class=\"empty-state\">Sin citas registradas.</p>"}
     </section>
     <section>
-      <h3>Notas de evolucion</h3>
+      <h3>Notas de evolución</h3>
       ${notes.length ? "" : "<p class=\"empty-state\">Sin notas registradas.</p>"}
     </section>
   `;
@@ -1071,7 +1112,7 @@ function validateManualField(field) {
   }
 
   if (field.name === "phone" && value && !/^\d{10}$/.test(value.replace(/\D/g, ""))) {
-    message = "Escribe un telefono de 10 digitos.";
+    message = "Escribe un teléfono de 10 dígitos.";
   }
 
   if (field.name === "patientId" && Number(value) <= 0) {
@@ -1092,7 +1133,7 @@ function validateUserField(field) {
   }
 
   if (field.name === "telefono" && value && !/^\d{10}$/.test(value.replace(/\D/g, ""))) {
-    message = "Escribe un telefono de 10 digitos.";
+    message = "Escribe un teléfono de 10 dígitos.";
   }
 
   if (field.name === "email" && value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
@@ -1100,7 +1141,7 @@ function validateUserField(field) {
   }
 
   if (field.name === "password" && value && (value.length < 8 || !/[A-Za-z]/.test(value) || !/\d/.test(value))) {
-    message = "Usa al menos 8 caracteres, una letra y un numero.";
+    message = "Usa al menos 8 caracteres, una letra y un número.";
   }
 
   showFieldError(field, message);
@@ -1115,7 +1156,8 @@ function buildManualAppointmentPayload(form) {
     pacienteId: Number(data.get("patientId")),
     odontologoId: Number(data.get("odontologoId")),
     fechaHora: data.get("dateTime"),
-    motivo: data.get("reason").trim()
+    motivo: data.get("reason").trim(),
+    duracionMinutos: Number(data.get("duration") || 60)
   };
 }
 
@@ -1274,8 +1316,8 @@ function addPaymentRow(payment, prepend = false) {
 function roleLabel(role) {
   const labels = {
     ADMIN: "Administrador",
-    RECEPCION: "Recepcionista",
-    ODONTOLOGO: "Odontologo"
+    RECEPCION: "Recepciónista",
+    ODONTOLOGO: "Odontólogo"
   };
 
   return labels[role] || role;
@@ -1398,6 +1440,7 @@ async function registerPayment(form) {
       body: JSON.stringify(payload)
     });
 
+    if (paymentFilter) paymentFilter.value = "";
     await loadPayments();
     await loadReceptionReport();
     paymentForm.reset();
@@ -1440,7 +1483,7 @@ agendaTable.addEventListener("click", async (event) => {
     updateAppointmentStatus(row, newStatus);
     loadReceptionReport();
   } catch (error) {
-    alert(error.message || "No se pudo actualizar el estatus. Verifica que el servidor este encendido.");
+    alert(error.message || "No se pudo actualizar el estatus. Verifica que el servidor esté encendido.");
   } finally {
     statusButton.disabled = false;
   }
@@ -1468,6 +1511,17 @@ patientFilter.addEventListener("input", () => {
   filterPatients(patientFilter.value);
 });
 
+if (paymentFilter) {
+  let paymentFilterTimer = null;
+
+  paymentFilter.addEventListener("input", () => {
+    window.clearTimeout(paymentFilterTimer);
+    paymentFilterTimer = window.setTimeout(() => {
+      loadPayments(paymentFilter.value);
+    }, 250);
+  });
+}
+
 if (agendaDateInput) {
   agendaDateInput.addEventListener("change", loadTodayAgenda);
 }
@@ -1478,6 +1532,10 @@ if (manualDateInput) {
 
 if (manualDentistSelect) {
   manualDentistSelect.addEventListener("change", updateManualAvailability);
+}
+
+if (manualDurationSelect) {
+  manualDurationSelect.addEventListener("change", updateManualAvailability);
 }
 
 if (businessHoursForm) {
@@ -1502,7 +1560,7 @@ if (holidayList) {
     if (!deleteButton) return;
 
     const row = deleteButton.closest("[data-holiday-id]");
-    const confirmed = window.confirm("Este dia dejara de estar marcado como cierre especial. Deseas continuar?");
+    const confirmed = window.confirm("Este día dejará de estar marcado como cierre especial. Deseas continuar?");
 
     if (!confirmed) return;
 
@@ -1521,7 +1579,7 @@ if (holidayList) {
 
 if (appointmentRequestsList) {
   appointmentRequestsList.addEventListener("change", (event) => {
-    if (!event.target.matches("[data-request-dentist]")) return;
+    if (!event.target.matches("[data-request-dentist], [data-request-duration]")) return;
 
     const row = event.target.closest("[data-request-id]");
     updateRequestAvailability(row);
@@ -1540,6 +1598,7 @@ if (appointmentRequestsList) {
     try {
       if (acceptButton) {
         const dentistSelect = row.querySelector("[data-request-dentist]");
+        const durationSelect = row.querySelector("[data-request-duration]");
 
         if (!dentistSelect?.value) {
           appointmentRequestsStatus.textContent = "Selecciona un odontólogo antes de aceptar la solicitud.";
@@ -1547,7 +1606,7 @@ if (appointmentRequestsList) {
           return;
         }
 
-        await acceptAppointmentRequest(requestId, dentistSelect.value);
+        await acceptAppointmentRequest(requestId, dentistSelect.value, durationSelect?.value || 60);
         appointmentRequestsStatus.textContent = "Solicitud aceptada y cita creada.";
       }
 
@@ -1591,7 +1650,7 @@ patientsList.addEventListener("click", async (event) => {
 
     if (nombre === null) return;
 
-    const telefono = window.prompt("Telefono del paciente:", currentPhone);
+    const telefono = window.prompt("Teléfono del paciente:", currentPhone);
 
     if (telefono === null) return;
 
@@ -1600,7 +1659,7 @@ patientsList.addEventListener("click", async (event) => {
     if (email === null) return;
 
     if (!nombre.trim() || !telefono.trim() || !email.trim()) {
-      alert("Nombre, telefono y correo son obligatorios.");
+      alert("Nombre, teléfono y correo son obligatorios.");
       return;
     }
 
@@ -1623,7 +1682,7 @@ patientsList.addEventListener("click", async (event) => {
 
     if (!newPassword) return;
     if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-      alert("La contraseña debe tener al menos 8 caracteres, una letra y un numero.");
+      alert("La contraseña debe tener al menos 8 caracteres, una letra y un número.");
       return;
     }
 
@@ -1665,7 +1724,7 @@ if (adminUserForm) {
     const submitButton = adminUserForm.querySelector("button[type='submit']");
 
     if (!payload.nombre || !payload.email || payload.password.length < 8 || !/[A-Za-z]/.test(payload.password) || !/\d/.test(payload.password) || !payload.rol) {
-      adminUserStatus.textContent = "Completa nombre, correo, rol y una contraseña de al menos 8 caracteres, una letra y un numero.";
+      adminUserStatus.textContent = "Completa nombre, correo, rol y una contraseña de al menos 8 caracteres, una letra y un número.";
       adminUserStatus.classList.add("is-error");
       return;
     }
@@ -1703,7 +1762,7 @@ if (adminUserForm) {
 
       if (!newPassword) return;
       if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
-        alert("La contraseña debe tener al menos 8 caracteres, una letra y un numero.");
+        alert("La contraseña debe tener al menos 8 caracteres, una letra y un número.");
         return;
       }
 
@@ -1857,7 +1916,7 @@ passwordForm.addEventListener("submit", async (event) => {
   };
 
   if (!payload.passwordActual || payload.passwordNueva.length < 8 || !/[A-Za-z]/.test(payload.passwordNueva) || !/\d/.test(payload.passwordNueva)) {
-    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un número.";
     passwordStatus.classList.add("is-error");
     return;
   }

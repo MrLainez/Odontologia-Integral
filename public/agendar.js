@@ -1,4 +1,4 @@
-const calendarGrid = document.querySelector("#calendar-grid");
+﻿const calendarGrid = document.querySelector("#calendar-grid");
 const currentMonthLabel = document.querySelector("#current-month");
 const timeSlots = document.querySelector("#time-slots");
 const summaryDate = document.querySelector("#summary-date");
@@ -69,7 +69,7 @@ function getDateKey(date) {
   return date.toISOString().split("T")[0];
 }
 
-// Define si un dia se puede seleccionar.
+// Define si un día se puede seleccionar.
 function isAvailableDay(date) {
   const dayOfWeek = date.getDay();
   const isoDayOfWeek = dayOfWeek === 0 ? 7 : dayOfWeek;
@@ -158,7 +158,7 @@ function renderCalendar() {
   }
 }
 
-// Selecciona un dia y muestra sus horarios.
+// Selecciona un día y muestra sus horarios.
 function selectDay(date, dayButton) {
   selectedDayKey = getDateKey(date);
   selectedTime = "";
@@ -194,13 +194,14 @@ async function renderTimeSlots(date) {
     const availability = await loadAvailability(getDateKey(date));
     renderAvailabilityChips(availability);
   } catch (error) {
-    timeSlots.innerHTML += `<p class="form-status is-error">No fue posible cargar disponibilidad real.</p>`;
+    timeSlots.innerHTML += `<p class="form-status is-error">No fue posible cargar la disponibilidad real.</p>`;
   }
 }
 
 async function loadAvailability(dateKey) {
   const url = new URL(AVAILABILITY_ENDPOINT);
   url.searchParams.set("fecha", dateKey);
+  url.searchParams.set("duracionMinutos", "60");
   if (preferredDentistSelect?.value) {
     url.searchParams.set("odontologoId", preferredDentistSelect.value);
   }
@@ -271,7 +272,7 @@ function renderAvailabilityChips(availability) {
   if (!slots.length) {
     const emptyMessage = document.createElement("p");
     emptyMessage.className = "form-status";
-    emptyMessage.textContent = "No hay horarios de atencion configurados para este dia.";
+    emptyMessage.textContent = "No hay horarios de atención configurados para este día.";
     timeSlots.append(emptyMessage);
     return;
   }
@@ -387,7 +388,7 @@ confirmSlotButton.addEventListener("click", async () => {
   const appointmentPayload = buildAppointmentPayload();
   const confirmationMessage = isRescheduleMode
     ? `Cita reprogramada para el ${selectedFormattedDate} a las ${selectedTime}.`
-    : `Solicitud enviada para el ${selectedFormattedDate} a las ${selectedTime}. Recepcion confirmara la cita.`;
+    : `Solicitud enviada para el ${selectedFormattedDate} a las ${selectedTime}. Recepción confirmara la cita.`;
 
   confirmSlotButton.disabled = true;
   scheduleStatus.textContent = isRescheduleMode ? "Confirmando cambio..." : "Enviando solicitud...";

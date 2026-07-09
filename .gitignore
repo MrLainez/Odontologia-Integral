@@ -41,6 +41,9 @@ bin/
 ### Archivos clinicos subidos ###
 uploads/
 
+### Paquetes generados ###
+OdontoGral-deploy.zip
+
 ### Archivos internos de herramientas ###
 .agents/
 

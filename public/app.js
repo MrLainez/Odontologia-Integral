@@ -1,4 +1,4 @@
-const loginView = document.querySelector("#login-view");
+﻿const loginView = document.querySelector("#login-view");
 const portalView = document.querySelector("#portal-view");
 const loginForm = document.querySelector("#login-form");
 const registerForm = document.querySelector("#register-form");
@@ -40,7 +40,7 @@ const CHANGE_PATIENT_PASSWORD_ENDPOINT = `${API_BASE_URL}/api/pacientes/password
 
 let selectedAppointmentCard = null;
 
-// Fecha base para evitar solicitudes en dias pasados.
+// Fecha base para evitar solicitudes en días pasados.
 const today = new Date();
 today.setHours(0, 0, 0, 0);
 const quickRequestDate = document.querySelector("#date");
@@ -53,7 +53,7 @@ const validators = {
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || "Escribe un correo valido.",
   password: (value) => (
     value.trim().length >= 8 && /[A-Za-z]/.test(value) && /\d/.test(value)
-  ) || "La contrasena debe tener al menos 8 caracteres, una letra y un numero."
+  ) || "La contraseña debe tener al menos 8 caracteres, una letra y un número."
 };
 
 function showFieldError(field, message) {
@@ -116,7 +116,7 @@ function syncRememberedEmail(email) {
   }
 }
 
-// Abre el modal de cancelacion para la tarjeta seleccionada.
+// Abre el modal de cancelacion para la tarjeta selecciónada.
 function openCancelDialog(card) {
   selectedAppointmentCard = card;
   cancelDialog.classList.remove("is-hidden");
@@ -238,7 +238,7 @@ function formatTime(timeValue) {
 }
 
 function formatShortDate(dateTimeValue) {
-  if (!dateTimeValue) return "Sin notas clinicas";
+  if (!dateTimeValue) return "Sin notas clínicas";
 
   return new Date(dateTimeValue).toLocaleDateString("es-MX", {
     day: "2-digit",
@@ -285,7 +285,7 @@ async function loadPatientAppointments() {
   try {
     const appointments = await getJson(PATIENT_APPOINTMENTS_ENDPOINT(patientId));
     appointmentList.innerHTML = "";
-    appointmentsEmpty.textContent = "No tienes citas proximas registradas.";
+    appointmentsEmpty.textContent = "No tienes citas próximas registradas.";
     appointments.forEach((appointment) => {
       appointmentList.appendChild(createAppointmentCard(appointment));
     });
@@ -296,7 +296,7 @@ async function loadPatientAppointments() {
     if (handlePatientLoadError(error)) return;
 
     appointmentList.innerHTML = "";
-    appointmentsEmpty.textContent = "No fue posible cargar tus citas. Revisa la conexion con el servidor.";
+    appointmentsEmpty.textContent = "No fue posible cargar tus citas. Revisa la conexión con el servidor.";
     updateNextAppointment(null);
     updateAppointmentsEmptyState();
   }
@@ -311,7 +311,7 @@ async function loadPatientRecord() {
     const patientName = record.paciente?.nombre || localStorage.getItem("pacienteNombre") || "";
     const allergies = record.expediente?.alergias || "No registradas";
     const bloodType = record.expediente?.grupoSanguineo || "No registrado";
-    const lastNote = record.notasEvolucion?.[0]?.fechaHora || null;
+    const lastNote = record.notasEvolución?.[0]?.fechaHora || null;
 
     if (patientName) {
       localStorage.setItem("pacienteNombre", patientName);
@@ -377,7 +377,7 @@ function updateNextAppointment(appointment) {
     nextAppointmentDay.textContent = "--";
     nextAppointmentMonth.textContent = "Sin cita programada";
     nextAppointmentTime.textContent = "--:--";
-    nextAppointmentTreatment.textContent = "Agenda una nueva cita para verla aqui.";
+    nextAppointmentTreatment.textContent = "Agenda una nueva cita para verla aquí.";
     nextAppointmentDoctor.textContent = "Por asignar";
     return;
   }
@@ -463,7 +463,7 @@ togglePasswordButton.addEventListener("click", () => {
   const shouldShowPassword = passwordInput.type === "password";
   passwordInput.type = shouldShowPassword ? "text" : "password";
   togglePasswordButton.textContent = shouldShowPassword ? "Ocultar" : "Ver";
-  togglePasswordButton.setAttribute("aria-label", shouldShowPassword ? "Ocultar contrasena" : "Mostrar contrasena");
+  togglePasswordButton.setAttribute("aria-label", shouldShowPassword ? "Ocultar contraseña" : "Mostrar contraseña");
 });
 
 loginForm.addEventListener("submit", async (event) => {
@@ -494,7 +494,7 @@ loginForm.addEventListener("submit", async (event) => {
     window.location.href = getAdminRedirect(adminResponse.usuario.rol);
   } catch (adminError) {
     if (adminError.status !== 401) {
-      loginStatus.textContent = "No fue posible conectar con el servidor. Revisa la direccion/IP del sistema.";
+      loginStatus.textContent = "No fue posible conectar con el servidor. Revisa la dirección/IP del sistema.";
       loginStatus.classList.add("is-error");
       submitButton.disabled = false;
       submitButton.textContent = "Entrar";
@@ -511,7 +511,7 @@ loginForm.addEventListener("submit", async (event) => {
     } catch (patientError) {
       loginStatus.textContent = patientError.status === 401
         ? "Credenciales invalidas."
-        : "No fue posible conectar con el servidor. Revisa la direccion/IP del sistema.";
+        : "No fue posible conectar con el servidor. Revisa la dirección/IP del sistema.";
       loginStatus.classList.add("is-error");
     }
   } finally {
@@ -544,7 +544,7 @@ passwordForm.addEventListener("submit", async (event) => {
   };
 
   if (!payload.passwordActual || payload.passwordNueva.length < 6) {
-    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un numero.";
+    passwordStatus.textContent = "Escribe tu contraseña actual y una nueva de al menos 8 caracteres, una letra y un número.";
     passwordStatus.classList.add("is-error");
     return;
   }
@@ -606,11 +606,11 @@ confirmCancelButton.addEventListener("click", async () => {
     }, 180);
   } catch (error) {
     alert(error.status === 409
-      ? "La cita solo puede cancelarse con al menos 24 horas de anticipacion."
+      ? "La cita solo puede cancelarse con al menos 24 horas de anticipación."
       : error.message || "No fue posible cancelar la cita.");
   } finally {
     confirmCancelButton.disabled = false;
-    confirmCancelButton.textContent = "Si, cancelar";
+    confirmCancelButton.textContent = "Sí, cancelar";
   }
 });
 
