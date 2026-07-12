@@ -611,7 +611,7 @@ async function loadPatients() {
 
 async function loadPayments(filter = "") {
   try {
-    const query = filter.trim();
+    const query = typeof filter === "string" ? filter.trim() : "";
     const url = query
       ? `${API_PAGOS_URL}?paciente=${encodeURIComponent(query)}`
       : API_PAGOS_URL;
@@ -1941,7 +1941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadAppointmentRequests();
 });
 document.addEventListener("DOMContentLoaded", loadPatients);
-document.addEventListener("DOMContentLoaded", loadPayments);
+document.addEventListener("DOMContentLoaded", () => loadPayments());
 document.addEventListener("DOMContentLoaded", loadAdminUsers);
 document.addEventListener("DOMContentLoaded", loadReceptionReport);
 document.addEventListener("DOMContentLoaded", loadBusinessHours);
